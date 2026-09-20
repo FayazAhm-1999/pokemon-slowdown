@@ -41,11 +41,14 @@ func (r *halfBlockRenderer) Render(img image.Image, cols, rows int) (string, err
 			bottom := pixelAt(scaled, col-offX, row*2+1-offY)
 			writeCell(&sb, top, bottom)
 		}
+		// Reset at the end of every row. Without this, a cell that set a
+		// background colour leaks it into whatever is drawn after the sprite,
+		// painting wide bars across the rest of the line.
+		sb.WriteString("\x1b[0m")
 		if row < rows-1 {
 			sb.WriteByte('\n')
 		}
 	}
-	sb.WriteString("\x1b[0m")
 	return sb.String(), nil
 }
 

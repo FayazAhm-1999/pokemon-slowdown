@@ -89,8 +89,13 @@ func (r *noneRenderer) Render(image.Image, int, int) (string, error) { return ""
 
 func (r *noneRenderer) Close() error { return nil }
 
-// fit scales img to fit inside w x h pixels using nearest-neighbour sampling,
-// which keeps pixel art crisp, and returns the scaled image.
+// fit scales img to fit inside w x h pixels and returns the scaled image.
+//
+// Downscaling uses area averaging rather than point sampling: a 96x96 sprite
+// rendered into an 18x18 box loses most of its pixels, and picking one pixel
+// per destination cell aliases the artwork into noise. Averaging keeps the
+// silhouette and colour of the original. Upscaling still uses nearest
+// neighbour, which keeps pixel art crisp.
 func fit(img image.Image, w, h int) *image.RGBA {
 	b := img.Bounds()
 	sw, sh := b.Dx(), b.Dy()
@@ -113,6 +118,25 @@ func fit(img image.Image, w, h int) *image.RGBA {
 	}
 
 	dst := image.NewRGBA(image.Rect(0, 0, nw, nh))
+	if nw <= sw && nh <= sh {
+		for y := 0; y < nh; y++ {
+			y0 := b.Min.Y + y*sh/nh
+			y1 := b.Min.Y + (y+1)*sh/nh
+			if y1 <= y0 {
+				y1 = y0 + 1
+			}
+			for x := 0; x < nw; x++ {
+				x0 := b.Min.X + x*sw/nw
+				x1 := b.Min.X + (x+1)*sw/nw
+				if x1 <= x0 {
+					x1 = x0 + 1
+				}
+				dst.Set(x, y, averageColor(img, x0, y0, x1, y1))
+			}
+		}
+		return dst
+	}
+
 	for y := 0; y < nh; y++ {
 		sy := b.Min.Y + y*sh/nh
 		for x := 0; x < nw; x++ {
@@ -121,6 +145,32 @@ func fit(img image.Image, w, h int) *image.RGBA {
 		}
 	}
 	return dst
+}
+
+// averageColor returns the mean colour of a source rectangle. color.Color.RGBA
+// returns alpha-premultiplied components, so averaging them directly is correct
+// and avoids dark fringes where the sprite is transparent.
+func averageColor(img image.Image, x0, y0, x1, y1 int) color.RGBA64 {
+	var sumR, sumG, sumB, sumA, n uint64
+	for y := y0; y < y1; y++ {
+		for x := x0; x < x1; x++ {
+			r, g, b, a := img.At(x, y).RGBA()
+			sumR += uint64(r)
+			sumG += uint64(g)
+			sumB += uint64(b)
+			sumA += uint64(a)
+			n++
+		}
+	}
+	if n == 0 {
+		return color.RGBA64{}
+	}
+	return color.RGBA64{
+		R: uint16(sumR / n),
+		G: uint16(sumG / n),
+		B: uint16(sumB / n),
+		A: uint16(sumA / n),
+	}
 }
 
 // opaque reports whether a colour is meaningfully visible. A nil colour means
@@ -134,9 +184,26 @@ func opaque(c color.Color) bool {
 }
 
 // rgb renders a colour as the three components of a truecolour sequence.
+// Components are un-premultiplied so semi-transparent sprite edges keep their
+// colour instead of darkening toward the terminal background.
 func rgb(c color.Color) (r, g, b uint8) {
-	rr, gg, bb, _ := c.RGBA()
+	rr, gg, bb, aa := c.RGBA()
+	if aa == 0 {
+		return 0, 0, 0
+	}
+	if aa != 0xffff {
+		rr = min32(rr*0xffff/aa, 0xffff)
+		gg = min32(gg*0xffff/aa, 0xffff)
+		bb = min32(bb*0xffff/aa, 0xffff)
+	}
 	return uint8(rr >> 8), uint8(gg >> 8), uint8(bb >> 8)
+}
+
+func min32(a, b uint32) uint32 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // rgbString formats a colour for a 24-bit ANSI sequence.

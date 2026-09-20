@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,9 +9,13 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
+	"github.com/unnipv/pokemon-slowdown/internal/battle"
 	"github.com/unnipv/pokemon-slowdown/internal/config"
+	"github.com/unnipv/pokemon-slowdown/internal/dex"
 	"github.com/unnipv/pokemon-slowdown/internal/showdown"
+	"github.com/unnipv/pokemon-slowdown/internal/storage"
 )
 
 func testModel(t *testing.T, cfg config.Config) *Model {
@@ -262,6 +267,142 @@ func TestQuitDoesNotForfeitImmediately(t *testing.T) {
 	}
 	if m.confirm != "" {
 		t.Error("n should cancel the quit prompt")
+	}
+}
+
+func TestMoveLinesAlignToTheSameColumn(t *testing.T) {
+	m := testModel(t, config.Default())
+	feedFixture(t, m, "gen9-singles.txt")
+	bv := m.activeBattle()
+	if bv == nil {
+		t.Fatal("no battle")
+	}
+	// A move request we can render.
+	bv.apply(showdown.BattleRequest{
+		Base: showdown.Base{RoomID: bv.room},
+		Request: `{"active":[{"moves":[
+			{"move":"Shadow Ball","id":"shadowball","pp":23,"maxpp":24,"target":"normal"},
+			{"move":"Sludge Wave","id":"sludgewave","pp":16,"maxpp":16,"target":"allAdjacent"},
+			{"move":"Focus Blast","id":"focusblast","pp":8,"maxpp":8,"target":"normal"},
+			{"move":"Nasty Plot","id":"nastyplot","pp":31,"maxpp":32,"target":"self"}
+		]}],"side":{"name":"x","id":"p1","pokemon":[{"ident":"p1: Gengar","details":"Gengar, L82, M","condition":"241/241","active":true}]}}`,
+	})
+
+	for _, width := range []int{40, 60, 80, 120} {
+		layout := LayoutFor(width)
+		bv.curLayout = layout
+		lines := bv.renderMoves(width, layout)
+
+		var moveLines []string
+		for _, line := range lines {
+			plain := stripANSI(line)
+			if strings.TrimSpace(plain) == "" {
+				continue
+			}
+			if len(moveLines) < 4 && (strings.HasPrefix(plain, "  1") || strings.HasPrefix(plain, "  2") ||
+				strings.HasPrefix(plain, "  3") || strings.HasPrefix(plain, "  4")) {
+				moveLines = append(moveLines, strings.TrimRight(plain, " "))
+			}
+		}
+		if len(moveLines) != 4 {
+			t.Fatalf("width %d: found %d move lines, want 4", width, len(moveLines))
+		}
+		// The PP column is right-aligned, so every move row must end on the
+		// same column once trailing padding is removed.
+		want := len([]rune(moveLines[0]))
+		for i, line := range moveLines {
+			if got := len([]rune(line)); got != want {
+				t.Errorf("width %d: move row %d ends at column %d, want %d\n  %q\n  %q",
+					width, i+1, got, want, moveLines[0], line)
+			}
+		}
+	}
+}
+
+func TestTypeBadgesAreFixedWidth(t *testing.T) {
+	m := testModel(t, config.Default())
+	bv := m.battleFor("battle-x")
+
+	allTypes := []string{
+		"normal", "fire", "water", "electric", "grass", "ice", "fighting",
+		"poison", "ground", "flying", "psychic", "bug", "rock", "ghost",
+		"dragon", "dark", "steel", "fairy",
+	}
+	first := lipgloss.Width(bv.typeBadge("ghost"))
+	for _, typ := range allTypes {
+		if w := lipgloss.Width(bv.typeBadge(typ)); w != first {
+			t.Errorf("typeBadge(%q) is %d cols, want %d (badges must align)", typ, w, first)
+		}
+	}
+	// A move with no known type must still reserve the same column, otherwise
+	// the PP column shifts.
+	if w := lipgloss.Width(bv.typeBadge("")); w != first {
+		t.Errorf("empty typeBadge is %d cols, want %d", w, first)
+	}
+}
+
+func TestMoveLinesAlignWithRealTypes(t *testing.T) {
+	// Uses the cached dex so move type badges actually render. This is the
+	// case that catches whitespace normalisation drifting the PP column.
+	if _, err := os.Stat(filepath.Join(storage.DexDir(), "moves.json")); err != nil {
+		t.Skip("dex cache not present; run `slowdown doctor` once")
+	}
+	d := dex.New(storage.DexDir())
+	if err := d.Ensure(context.Background()); err != nil {
+		t.Skipf("dex unavailable: %v", err)
+	}
+	m := New(config.Default(), Deps{Dex: d, Now: time.Now})
+	m.width, m.height = 80, 40
+	bv := m.battleFor("battle-x")
+	bv.apply(showdown.BattleRequest{
+		Base: showdown.Base{RoomID: "battle-x"},
+		Request: `{"active":[{"moves":[
+			{"move":"Shadow Ball","id":"shadowball","pp":23,"maxpp":24,"target":"normal"},
+			{"move":"Focus Blast","id":"focusblast","pp":8,"maxpp":8,"target":"normal"},
+			{"move":"Nasty Plot","id":"nastyplot","pp":31,"maxpp":32,"target":"self"},
+			{"move":"Sludge Wave","id":"sludgewave","pp":16,"maxpp":16,"target":"allAdjacent"}
+		]}],"side":{"name":"x","id":"p1","pokemon":[{"ident":"p1: Gengar","details":"Gengar, L82, M","condition":"241/241","active":true}]}}`,
+	})
+
+	for _, width := range []int{60, 80, 120} {
+		layout := LayoutFor(width)
+		bv.curLayout = layout
+		var rows []string
+		for _, line := range bv.renderMoves(width, layout) {
+			plain := strings.TrimRight(stripANSI(line), " ")
+			if len(rows) < 4 && len(plain) > 2 && plain[2] >= '1' && plain[2] <= '4' {
+				rows = append(rows, plain)
+			}
+		}
+		if len(rows) != 4 {
+			t.Fatalf("width %d: got %d move rows", width, len(rows))
+		}
+		want := len([]rune(rows[0]))
+		for i, r := range rows {
+			if got := len([]rune(r)); got != want {
+				t.Errorf("width %d: row %d ends at %d, want %d\n  %q\n  %q",
+					width, i+1, got, want, rows[0], r)
+			}
+		}
+		// Sanity: the badges really are present, otherwise this proves nothing.
+		if !strings.Contains(rows[0], "GHOST") {
+			t.Errorf("width %d: expected a type badge in %q", width, rows[0])
+		}
+	}
+}
+
+func TestNarrowMonLineKeepsTypes(t *testing.T) {
+	m := testModel(t, config.Default())
+	// No dex in this test, so types cannot render; assert the builder does not
+	// rely on the dex to keep the line within bounds.
+	bv := m.battleFor("battle-x")
+	p := &battle.Pokemon{Name: "Landorus-Therian", HP: 263, MaxHP: 300, HPPercent: 87, Species: "Landorus-Therian"}
+	for _, width := range []int{36, 46} {
+		layout := LayoutFor(width)
+		line := bv.renderMonLine(p, false, width, layout)
+		if got := lipgloss.Width(line); got > width-1 {
+			t.Errorf("width %d: mon line is %d cols: %q", width, got, stripANSI(line))
+		}
 	}
 }
 

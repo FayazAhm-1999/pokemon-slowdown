@@ -31,6 +31,8 @@ type Theme struct {
 
 	Statuses map[string]lipgloss.Style
 	Types    map[string]lipgloss.Style
+	// TypesFg colours text by Pokémon type, for move names and type labels.
+	TypesFg map[string]lipgloss.Style
 
 	Border lipgloss.Border
 }
@@ -93,6 +95,7 @@ func buildTheme(name string, pal palette) Theme {
 		HPLow:    style(pal.danger, false),
 		Statuses: map[string]lipgloss.Style{},
 		Types:    map[string]lipgloss.Style{},
+		TypesFg:  map[string]lipgloss.Style{},
 	}
 	for _, s := range []string{"brn", "par", "slp", "frz", "psn", "tox", "fnt"} {
 		t.Statuses[s] = style(pal.danger, true)
@@ -107,6 +110,9 @@ func buildTheme(name string, pal palette) Theme {
 			Background(lipgloss.Color(col)).
 			Foreground(lipgloss.Color("#1b1b1b")).
 			Padding(0, 1)
+		t.TypesFg[typ] = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(col)).
+			Bold(true)
 	}
 	return t
 }

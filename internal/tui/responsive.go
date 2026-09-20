@@ -63,8 +63,9 @@ func (m LayoutMode) SpriteCells() (cols, rows int) {
 // ShowFieldConditions reports whether the field bar fits.
 func (m LayoutMode) ShowFieldConditions() bool { return m != LayoutCompact }
 
-// ShowSpriteName reports whether the larger side-by-side battlefield fits.
-func (m LayoutMode) ShowBattlefield() bool { return m == LayoutCinematic }
+// SpriteLayout reports whether the wide sprite-beside-detail battlefield is
+// used, as opposed to a single line per Pokémon.
+func (m LayoutMode) SpriteLayout() bool { return m == LayoutCinematic || m == LayoutStandard }
 
 // MinWidth and MinHeight are the smallest usable terminal.
 const (

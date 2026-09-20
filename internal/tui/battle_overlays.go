@@ -115,7 +115,7 @@ func (bv *battleView) renderInspectOverlay(width int) string {
 		title += " " + genderGlyph(p.Gender)
 	}
 	body := []string{
-		t.Fg.Bold(true).Render(title) + "  " + bv.typeList(p.Species),
+		t.Fg.Bold(true).Render(title) + "  " + bv.typeList(p.Species, bv.curLayout),
 		"",
 		fmt.Sprintf("HP      %s %d%%", bv.hpBar(p.HPPercent, 12), p.HPPercent),
 		fmt.Sprintf("Status  %s", orDash(bv.statusBadge(p.Status))),
