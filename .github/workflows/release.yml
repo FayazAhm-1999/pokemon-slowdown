@@ -1,0 +1,40 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+          cache: true
+
+      - name: test before releasing
+        run: go test ./... -timeout 300s
+
+      - name: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A personal access token with `repo` scope on the Homebrew tap.
+          # Without it the Homebrew formula is skipped and the release still
+          # succeeds, so the first release never depends on extra setup.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          args="release --clean"
+          if [ -z "${HOMEBREW_TAP_GITHUB_TOKEN}" ]; then
+            echo "::notice::HOMEBREW_TAP_GITHUB_TOKEN is not set; skipping the Homebrew formula"
+            args="$args --skip=homebrew"
+          fi
+          goreleaser $args

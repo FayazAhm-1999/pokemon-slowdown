@@ -1,7 +1,17 @@
 # GoReleaser configuration for pokemon slowdown.
 #
 # Builds the `slowdown` binary for the supported platforms, publishes a GitHub
-# release with checksums, and generates a Homebrew formula.
+# release with checksums, and updates the Homebrew formula in the tap.
+#
+# Verify locally without publishing:
+#
+#   make snapshot        # goreleaser build --snapshot --clean
+#
+# Publishing a release:
+#
+#   git tag -a v0.1.0 -m "v0.1.0" && git push origin v0.1.0
+#
+# See the "Releasing" section of the README for the Homebrew tap setup.
 version: 2
 
 project_name: pokemon-slowdown
@@ -62,16 +72,28 @@ changelog:
       - "^test:"
       - "^chore:"
 
+# A Formula rather than a Cask, deliberately: casks are macOS-only, and a
+# terminal client has a large Linux audience. GoReleaser marks `brews` as
+# deprecated in favour of `homebrew_casks`, but the replacement would drop
+# Linuxbrew support, so the formula stays until that changes.
 brews:
   - name: pokemon-slowdown
     repository:
       owner: unnipv
       name: homebrew-tap
+      # Requires a personal access token with `repo` scope on the tap, stored as
+      # the HOMEBREW_TAP_GITHUB_TOKEN secret. The default GITHUB_TOKEN cannot
+      # push to a different repository. The release workflow skips this step
+      # when the secret is absent, so a release still succeeds without it.
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
     homepage: "https://github.com/unnipv/pokemon-slowdown"
     description: "A calm, keyboard-first terminal client for Pokémon Showdown"
     license: "MIT"
     install: |
       bin.install "slowdown"
+    test: |
+      system "#{bin}/slowdown", "--version"
 
 release:
   draft: false

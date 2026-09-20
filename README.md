@@ -251,22 +251,44 @@ a bug worth reporting.
   your terminal.
 - No telemetry. No analytics. No accounts beyond your Pokémon Showdown account.
 
-## Contributing
+## Development
 
 ```sh
-go test ./...          # unit, protocol and reducer tests
-go test -race ./...
-go vet ./...
-staticcheck ./...
-gofmt -l ./cmd ./internal
+git clone https://github.com/unnipv/pokemon-slowdown
+cd pokemon-slowdown
+
+make build      # -> ./slowdown
+make run        # build and open the lobby
+make check      # gofmt, go vet, staticcheck, tests
 ```
 
-Protocol fixtures live in `testdata/battles/` and are replayed through the
-parser and reducer, so a change to protocol handling is verifiable without a
-network connection.
+Requires **Go 1.27+**. `make test` needs no network; the opt-in suites that hit
+the real server and sprite server are `make live`.
 
-`docs/IMPLEMENTATION_NOTES.md` records protocol discoveries, renderer
-compromises and the manual terminal test matrix.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout, how to add a
+protocol event, and the two protocol traps that have bitten this project.
+`docs/IMPLEMENTATION_NOTES.md` records the protocol discoveries and renderer
+compromises.
+
+## Releasing
+
+Releases are automated. To cut one:
+
+```sh
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
+```
+
+The `release` workflow runs GoReleaser, which builds `slowdown` for macOS,
+Linux and Windows (amd64 and arm64), publishes the archives plus
+`checksums.txt`, and updates the Homebrew formula in the tap. The version is
+injected with `-ldflags`, so `slowdown --version` reports the tag.
+
+To verify the release config without publishing:
+
+```sh
+make snapshot      # goreleaser build --snapshot --clean
+```
 
 ## Licence
 
