@@ -37,6 +37,34 @@ go run ./cmd/slowdown
 You can play immediately as a guest. `slowdown rand` queues a Gen 9 Random
 Battle; `slowdown doctor` prints terminal diagnostics.
 
+## Workflow
+
+Changes land on `master` through a pull request. Nothing is tagged for release
+until the maintainer has run the change locally.
+
+```sh
+git checkout -b fix/tab-skips-finished-battles
+# ... make the change ...
+make check
+git push -u origin fix/tab-skips-finished-battles
+gh pr create --fill
+```
+
+1. **Branch.** Name it for the change: `fix/…`, `feat/…`, `docs/…`.
+2. **Pull request.** CI runs on every PR across Linux, macOS and Windows,
+   including the race detector and a GoReleaser snapshot build. Fill in the
+   template, including how you verified it.
+3. **Review.** Read the diff. If the change touches the protocol or a renderer,
+   run `make live` too — the mocked suites will not catch framing or payload
+   mistakes.
+4. **Merge** to `master`.
+5. **Local test.** The maintainer runs the change in a real terminal before any
+   release. A green CI run is not the same as a working TUI.
+6. **Release.** Only then is a tag pushed. See Releasing below.
+
+Branch protection on `master` requires a pull request, so the first four steps
+are enforced rather than remembered.
+
 ## The checks that must pass
 
 ```sh
