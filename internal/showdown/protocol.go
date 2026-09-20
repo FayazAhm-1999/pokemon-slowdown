@@ -32,6 +32,10 @@ func SplitFrames(data string) []Frame {
 	}
 
 	for _, line := range strings.Split(data, "\n") {
+		// Tolerate CRLF. The protocol is newline-delimited, and a client that
+		// chokes on a stray carriage return is a client that breaks on Windows
+		// checkouts and on any future server change.
+		line = strings.TrimSuffix(line, "\r")
 		if strings.HasPrefix(line, ">") {
 			flush()
 			cur.RoomID = line[1:]

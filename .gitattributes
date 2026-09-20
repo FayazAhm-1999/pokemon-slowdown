@@ -1,0 +1,7 @@
+# Keep line endings stable across platforms. Protocol fixtures are compared
+# byte for byte by the tests, and a Windows checkout would otherwise convert
+# them to CRLF.
+* text=auto eol=lf
+
+# Test fixtures are protocol data, not source: never rewrite them.
+testdata/** -text

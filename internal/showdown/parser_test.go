@@ -28,6 +28,28 @@ func TestSplitFramesEmpty(t *testing.T) {
 	}
 }
 
+func TestSplitFramesToleratesCRLF(t *testing.T) {
+	// A Windows checkout or a CRLF-using intermediary must not corrupt values.
+	raw := ">battle-1\r\n|player|p1|Alice|1|1500\r\n|turn|1\r\n"
+	frames := SplitFrames(raw)
+	if len(frames) != 1 {
+		t.Fatalf("got %d frames, want 1", len(frames))
+	}
+	if frames[0].RoomID != "battle-1" {
+		t.Errorf("room = %q", frames[0].RoomID)
+	}
+	evs := Parse(frames[0])
+	if len(evs) != 2 {
+		t.Fatalf("got %d events, want 2", len(evs))
+	}
+	if p, ok := evs[0].(BattlePlayer); !ok || p.Name != "Alice" || p.Rating != "1500" {
+		t.Errorf("player parsed wrong: %#v", evs[0])
+	}
+	if turn, ok := evs[1].(BattleTurn); !ok || turn.Turn != 1 {
+		t.Errorf("turn parsed wrong: %#v", evs[1])
+	}
+}
+
 func TestParseChatKeepsPipes(t *testing.T) {
 	evs := Parse(Frame{RoomID: "lobby", Lines: []string{"|c|Bob|hi | there | friend"}})
 	if len(evs) != 1 {
