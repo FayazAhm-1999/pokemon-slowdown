@@ -344,7 +344,13 @@ func (m *Model) renderLobbySide(width, height int) string {
 		sort.Strings(rooms)
 		for _, r := range rooms {
 			title := SanitizeLine(m.games[r])
-			b.WriteString("  " + t.Fg.Render(truncate(title, width-4)) + "\n")
+			line := "  " + t.Fg.Render(truncate(title, width-14))
+			if bv := m.battles[r]; bv != nil && bv.state().Ended {
+				// Tab skips finished battles; say so rather than leaving the
+				// list looking like they are still playable.
+				line += " " + t.Dim.Render("finished")
+			}
+			b.WriteString(line + "\n")
 		}
 		b.WriteString("\n")
 	}

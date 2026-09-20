@@ -632,3 +632,125 @@ func TestEverySizeFitsAndKeepsTheStatusLine(t *testing.T) {
 		}
 	}
 }
+
+// finishBattle marks a battle room as over.
+func finishBattle(t *testing.T, m *Model, room string) *battleView {
+	t.Helper()
+	bv := m.battleFor(room)
+	bv.apply(showdown.BattleWin{
+		Base: showdown.Base{RoomID: room},
+		User: "someone",
+	})
+	if !bv.state().Ended {
+		t.Fatalf("%s should be finished", room)
+	}
+	return bv
+}
+
+func TestTabSkipsFinishedBattles(t *testing.T) {
+	m := testModel(t, config.Default())
+	finishBattle(t, m, "battle-a")
+	live := m.battleFor("battle-b")
+
+	m.active = "battle-a"
+	m.screen = screenBattle
+
+	m.switchBattle()
+	if m.active != "battle-b" {
+		t.Errorf("tab landed on %q, want battle-b", m.active)
+	}
+	// With only one live battle, tab must stay there rather than cycling back
+	// into the finished one.
+	m.switchBattle()
+	if m.active != "battle-b" {
+		t.Errorf("tab cycled into a finished battle: %q", m.active)
+	}
+	if live.state().Ended {
+		t.Fatal("test setup wrong: battle-b should be live")
+	}
+}
+
+func TestTabWithOnlyFinishedBattlesReturnsToTheLobby(t *testing.T) {
+	m := testModel(t, config.Default())
+	finishBattle(t, m, "battle-a")
+	m.active = "battle-a"
+	m.screen = screenBattle
+
+	m.switchBattle()
+	if m.screen != screenLobby {
+		t.Errorf("screen = %v, want the lobby", m.screen)
+	}
+}
+
+func TestDismissRemovesABattleFromTheRotation(t *testing.T) {
+	m := testModel(t, config.Default())
+	finishBattle(t, m, "battle-a")
+	m.active = "battle-a"
+	m.screen = screenBattle
+
+	m.dismissBattle("battle-a")
+
+	if _, ok := m.battles["battle-a"]; ok {
+		t.Error("battle was not removed")
+	}
+	if len(m.order) != 0 {
+		t.Errorf("rotation still lists %v", m.order)
+	}
+	if m.screen != screenLobby {
+		t.Errorf("screen = %v, want the lobby with nothing left", m.screen)
+	}
+}
+
+func TestDismissFinishedClosesOnlyFinishedOnes(t *testing.T) {
+	m := testModel(t, config.Default())
+	finishBattle(t, m, "battle-a")
+	finishBattle(t, m, "battle-b")
+	m.battleFor("battle-c")
+
+	m.dismissFinishedBattles()
+
+	if _, ok := m.battles["battle-a"]; ok {
+		t.Error("battle-a should be closed")
+	}
+	if _, ok := m.battles["battle-b"]; ok {
+		t.Error("battle-b should be closed")
+	}
+	if _, ok := m.battles["battle-c"]; !ok {
+		t.Error("a live battle must not be closed")
+	}
+}
+
+func TestXClosesAFinishedBattle(t *testing.T) {
+	m := testModel(t, config.Default())
+	feedFixture(t, m, "gen9-singles.txt")
+	bv := m.activeBattle()
+	if bv == nil || !bv.state().Ended {
+		t.Fatal("fixture should end with a finished battle")
+	}
+	room := bv.room
+
+	if _, handled := bv.handleKey(keyMsg("x"), m); !handled {
+		t.Fatal("x should be handled on the result screen")
+	}
+	if _, ok := m.battles[room]; ok {
+		t.Error("x did not close the battle")
+	}
+}
+
+func TestPaletteOffersToCloseFinishedBattles(t *testing.T) {
+	m := testModel(t, config.Default())
+	finishBattle(t, m, "battle-a")
+	m.active = "battle-a"
+
+	var titles []string
+	for _, c := range m.commands() {
+		titles = append(titles, c.title)
+	}
+	joined := strings.Join(titles, "\n")
+	if !strings.Contains(joined, "Close this finished battle") {
+		t.Errorf("missing a close command:\n%s", joined)
+	}
+	if !strings.Contains(joined, "Close all finished battles") {
+		t.Errorf("missing a close-all command:\n%s", joined)
+	}
+}

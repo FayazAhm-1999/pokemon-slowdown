@@ -97,8 +97,9 @@ Server behaviour, verified against the live service:
 | `i` | inspect a Pokémon; `↑`/`↓` cycles between both sides |
 | `l` | full battle log |
 | `c` | battle chat |
-| `tab` | switch between open battles |
+| `tab` | switch between battles still in progress |
 | `enter` | after a battle, queue the same format again |
+| `x` | close a finished battle, removing it from `tab` |
 | `:` | command palette |
 | `?` | keyboard help |
 | `esc` | close an overlay, or return to the lobby |

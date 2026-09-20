@@ -826,7 +826,7 @@ func (bv *battleView) renderResult(width int) []string {
 	if id := showdown.ToID(s.Tier); id != "" {
 		out = append(out, t.Success.Render("  [enter] queue "+FormatName(id)+" again"))
 	}
-	out = append(out, t.Dim.Render("  [esc] lobby   [tab] switch battle   [l] log   [c] chat"))
+	out = append(out, t.Dim.Render("  [esc] lobby   [tab] switch battle   [x] close   [l] log   [c] chat"))
 	return out
 }
 

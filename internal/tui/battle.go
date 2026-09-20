@@ -311,6 +311,12 @@ func (bv *battleView) handleKey(msg tea.KeyPressMsg, m *Model) (tea.Cmd, bool) {
 				id = bv.owner.cfg.DefaultFormat
 			}
 			return bv.owner.requeue(id), true
+		case "x", "d":
+			// Close the battle so it stops appearing when switching battles.
+			if bv.owner != nil {
+				bv.owner.dismissBattle(bv.room)
+			}
+			return nil, true
 		}
 	}
 

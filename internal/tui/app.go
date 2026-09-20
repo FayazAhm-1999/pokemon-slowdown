@@ -674,29 +674,78 @@ func (m *Model) openBattle(room string) {
 	m.screen = screenBattle
 }
 
-// switchBattle moves focus between open battles. It prefers a battle that is
-// waiting on the player, so tab always lands somewhere useful.
+// liveBattles returns the rooms that are still in progress.
+func (m *Model) liveBattles() []string {
+	out := make([]string, 0, len(m.order))
+	for _, room := range m.order {
+		if bv := m.battles[room]; bv != nil && !bv.state().Ended {
+			out = append(out, room)
+		}
+	}
+	return out
+}
+
+// switchBattle moves focus between battles that are still in progress. Finished
+// battles are skipped rather than cycled through; dismiss them to remove them
+// from the rotation entirely.
 func (m *Model) switchBattle() {
-	if len(m.order) == 0 {
+	live := m.liveBattles()
+	if len(live) == 0 {
+		m.screen = screenLobby
 		return
 	}
-	// Prefer a battle awaiting a choice.
-	for _, room := range m.order {
-		bv := m.battles[room]
-		if bv != nil && bv.state().AwaitingChoice && !bv.state().Ended && room != m.active {
+	// Prefer one that is waiting on the player.
+	for _, room := range live {
+		if room == m.active {
+			continue
+		}
+		if bv := m.battles[room]; bv != nil && bv.state().AwaitingChoice {
 			m.openBattle(room)
 			return
 		}
 	}
-	idx := 0
-	for i, room := range m.order {
+	idx := -1
+	for i, room := range live {
 		if room == m.active {
 			idx = i
 			break
 		}
 	}
-	next := m.order[(idx+1)%len(m.order)]
-	m.openBattle(next)
+	m.openBattle(live[(idx+1)%len(live)])
+}
+
+// dismissBattle closes a battle room and removes it from the tab rotation. The
+// replay link stays available in the log until the client is closed.
+func (m *Model) dismissBattle(room string) {
+	if _, ok := m.battles[room]; !ok {
+		return
+	}
+	title := ""
+	if bv := m.battles[room]; bv != nil {
+		title = bv.title()
+	}
+	m.removeBattle(room)
+	if title != "" {
+		m.setToast("Closed " + title)
+	} else {
+		m.setToast("Battle closed.")
+	}
+}
+
+// dismissFinishedBattles closes every battle that has ended.
+func (m *Model) dismissFinishedBattles() {
+	closed := 0
+	for _, room := range append([]string{}, m.order...) {
+		if bv := m.battles[room]; bv != nil && bv.state().Ended {
+			m.removeBattle(room)
+			closed++
+		}
+	}
+	if closed == 0 {
+		m.setToast("No finished battles to close.")
+		return
+	}
+	m.setToast(fmt.Sprintf("Closed %d finished battle(s).", closed))
 }
 
 // removeBattle drops a finished battle.

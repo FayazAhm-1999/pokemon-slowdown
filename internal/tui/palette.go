@@ -245,6 +245,26 @@ func (m *Model) commands() []paletteCommand {
 			return nil
 		},
 	})
+	if bv := m.activeBattle(); bv != nil && bv.state().Ended {
+		cmds = append(cmds, paletteCommand{
+			title: "Close this finished battle",
+			run: func(m *Model) tea.Cmd {
+				if bv := m.activeBattle(); bv != nil {
+					m.dismissBattle(bv.room)
+				}
+				return nil
+			},
+		})
+	}
+	if len(m.order) > len(m.liveBattles()) {
+		cmds = append(cmds, paletteCommand{
+			title: "Close all finished battles",
+			run: func(m *Model) tea.Cmd {
+				m.dismissFinishedBattles()
+				return nil
+			},
+		})
+	}
 	if bv := m.activeBattle(); bv != nil && !bv.state().Ended {
 		cmds = append(cmds, paletteCommand{
 			title: "Forfeit this battle",
