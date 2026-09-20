@@ -158,7 +158,7 @@ func New(cfg config.Config, deps Deps) *Model {
 		battles:        map[string]*battleView{},
 		sprites:        newSpriteLayer(),
 		now:            deps.Now(),
-		layout:         LayoutFor(80),
+		layout:         LayoutForSize(80, 24),
 	}
 	return m
 }
@@ -239,7 +239,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.layout = LayoutFor(msg.Width)
+		m.layout = LayoutForSize(msg.Width, msg.Height)
 		return m, nil
 
 	case tea.KeyPressMsg:

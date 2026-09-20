@@ -67,6 +67,23 @@ func (bv *battleView) overlayFrame(title string, width int, body []string) strin
 	if width > 78 {
 		width = 78
 	}
+
+	// The box is len(body) + 6 lines tall: a title, a blank, the body, a blank,
+	// the hint, and two borders. Trim the body so the bottom border is never
+	// pushed off the screen.
+	maxBody := bv.curHeight - 6
+	if bv.curHeight == 0 {
+		maxBody = len(body)
+	}
+	if maxBody < 4 {
+		maxBody = 4
+	}
+	if len(body) > maxBody {
+		trimmed := append([]string{}, body[:maxBody-1]...)
+		trimmed = append(trimmed, bv.theme.Dim.Render(
+			fmt.Sprintf("… %d more lines", len(body)-(maxBody-1))))
+		body = trimmed
+	}
 	inner := width - 6
 	t := bv.theme
 	head := t.Title.Render(title)

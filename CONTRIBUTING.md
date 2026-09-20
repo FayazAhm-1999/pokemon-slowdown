@@ -156,6 +156,30 @@ and every config/cache/data path, which is usually enough to reproduce.
 For rendering problems, `slowdown doctor --sprites` shows which backends your
 terminal actually honours.
 
+## Releasing
+
+Maintainer notes. Releases are automated from a tag:
+
+```sh
+git tag -a v0.2.2 -m "v0.2.2"
+git push origin v0.2.2
+```
+
+The `release` workflow runs GoReleaser, which builds macOS, Linux and Windows
+binaries, publishes the archives and `checksums.txt`, and updates the Homebrew
+formula in `unnipv/homebrew-tap`. The version is injected with `-ldflags`, so
+`slowdown --version` reports the tag.
+
+Verify the configuration without publishing:
+
+```sh
+make snapshot      # goreleaser build --snapshot --clean
+```
+
+The Homebrew step needs a personal access token with `Contents: read and write`
+on the tap, stored as the `HOMEBREW_TAP_GITHUB_TOKEN` repository secret. Without
+it the release still succeeds and skips the formula.
+
 ## Licence
 
 By contributing you agree your work is licensed under the MIT licence, and that

@@ -22,6 +22,7 @@ import (
 func (bv *battleView) render(width, height int, layout LayoutMode) string {
 	bv.curLayout = layout
 	bv.curWidth = width
+	bv.curHeight = height
 	if bv.owner != nil && bv.owner.sprites != nil {
 		// Declare which sprites are on screen before rendering so the layer can
 		// invalidate sentinels when that set changes.
@@ -68,6 +69,11 @@ func (bv *battleView) render(width, height int, layout LayoutMode) string {
 		lines = append(lines, bv.renderResult(width)...)
 	}
 
+	// Pad to the full height so an overlay has the whole screen to be placed
+	// in; otherwise its bottom is clipped.
+	if height > 0 && len(lines) < height {
+		lines = append(lines, make([]string, height-len(lines))...)
+	}
 	body := strings.Join(lines, "\n")
 	if bv.overlay != overlayNone {
 		body = bv.renderOverlay(body, width, height, layout)

@@ -48,6 +48,7 @@ type battleView struct {
 
 	curLayout LayoutMode
 	curWidth  int
+	curHeight int
 
 	overlay       overlayKind
 	overlayCursor int

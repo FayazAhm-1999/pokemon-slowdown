@@ -240,17 +240,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout and how to add a
 protocol event. `docs/IMPLEMENTATION_NOTES.md` records protocol findings and
 renderer behaviour.
 
-## Releasing
-
-```sh
-git tag -a v0.2.0 -m "v0.2.0"
-git push origin v0.2.0
-```
-
-GoReleaser builds macOS, Linux and Windows binaries, publishes the archives and
-checksums, and updates the Homebrew formula in the tap. Verify the configuration
-without publishing with `make snapshot`.
-
 ## Licence
 
 MIT. See [LICENSE](LICENSE). Pokémon and Pokémon character names are trademarks

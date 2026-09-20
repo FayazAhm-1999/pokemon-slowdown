@@ -180,7 +180,11 @@ func substituteSentinels(p []byte, payloads map[rune]string) []byte {
 		r, size := utf8.DecodeRune(p[i:])
 		if r >= sentinelBase && r < sentinelBase+sentinelRange {
 			if payload, ok := payloads[r]; ok {
+				// The graphics escape occupies no cells, but the sentinel
+				// occupied one. Without the replacement cell everything after
+				// the sprite shifts left and collides with it.
 				out = append(out, payload...)
+				out = append(out, ' ')
 				i += size
 				continue
 			}

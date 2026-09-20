@@ -3,9 +3,13 @@ package tui
 import (
 	"bytes"
 	"github.com/unnipv/pokemon-slowdown/internal/config"
+	"regexp"
 	"strings"
 	"testing"
 )
+
+// apcRE matches an APC escape such as a Kitty graphics payload.
+var apcRE = regexp.MustCompile(`\x1b_[^\x1b]*\x1b\\`)
 
 func TestSpriteLayerSubstitutesSentinels(t *testing.T) {
 	l := newSpriteLayer()
@@ -111,5 +115,35 @@ func TestOverlayInvalidatesTheSpriteLayer(t *testing.T) {
 	}
 	if other := bv.layerKey(LayoutCompact); other == open {
 		t.Error("changing layout must invalidate the sprite layer")
+	}
+}
+
+// TestSentinelSubstitutionPreservesWidth guards the layout invariant that broke
+// the battle screen: the sentinel occupies one cell in the view, and the
+// graphics escape occupies none, so substituting it must still advance one cell
+// or everything after the sprite shifts left into it.
+func TestSentinelSubstitutionPreservesWidth(t *testing.T) {
+	l := newSpriteLayer()
+	var buf bytes.Buffer
+	w := l.wrap(&buf)
+
+	l.begin("set")
+	r := l.register("\x1b_GPAYLOAD\x1b\\")
+
+	view := "ab" + string(r) + "cd"
+	if got := len([]rune(view)); got != 5 {
+		t.Fatalf("view line is %d cells, expected 5", got)
+	}
+	if _, err := w.Write([]byte(view)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Strip the graphics sequences; what remains is what the terminal lays out.
+	visible := apcRE.ReplaceAllString(buf.String(), "")
+	if got := len([]rune(visible)); got != 5 {
+		t.Errorf("terminal lays out %d cells, want 5: %q", got, visible)
+	}
+	if !strings.Contains(visible, "ab") || !strings.Contains(visible, "cd") {
+		t.Errorf("surrounding text lost: %q", visible)
 	}
 }

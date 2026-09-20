@@ -273,6 +273,23 @@ func TestQuitDoesNotForfeitImmediately(t *testing.T) {
 	}
 }
 
+// feedFixtureUntilTurn replays a battle stream and stops at a given turn.
+func feedFixtureUntilTurn(t *testing.T, m *Model, name string, turn int) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "battles", name))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	for _, frame := range showdown.SplitFrames(string(raw)) {
+		for _, ev := range showdown.Parse(frame) {
+			m.handleShowdownEvent(ev)
+			if bv := m.activeBattle(); bv != nil && bv.state().Turn >= turn {
+				return
+			}
+		}
+	}
+}
+
 func TestMoveLinesAlignToTheSameColumn(t *testing.T) {
 	m := testModel(t, config.Default())
 	feedFixture(t, m, "gen9-singles.txt")
@@ -561,5 +578,28 @@ func TestPlainChatIsLeftAlone(t *testing.T) {
 	}
 	if got := htmlToText("gl hf"); got != "gl hf" {
 		t.Errorf("plain text was rewritten: %q", got)
+	}
+}
+
+func TestInspectOverlayFitsOnScreen(t *testing.T) {
+	// A battle in progress, which is when an overlay is actually opened.
+	m := testModel(t, config.Default())
+	feedFixtureUntilTurn(t, m, "gen9-singles.txt", 4)
+	bv := m.activeBattle()
+	if bv == nil {
+		t.Fatal("no battle")
+	}
+	bv.overlay = overlayInspect
+
+	for _, rows := range []int{18, 24, 30, 44} {
+		out := bv.render(120, rows-2, LayoutForSize(120, rows))
+		// The framed box must be closed; a missing bottom border means it ran
+		// off the screen.
+		if !strings.Contains(out, "╰") {
+			t.Errorf("rows=%d: overlay bottom border missing", rows)
+		}
+		if got := len(strings.Split(out, "\n")); got > rows {
+			t.Errorf("rows=%d: rendered %d lines, more than the screen", rows, got)
+		}
 	}
 }

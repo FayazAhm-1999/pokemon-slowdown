@@ -29,6 +29,22 @@ func LayoutFor(cols int) LayoutMode {
 	}
 }
 
+// LayoutForSize picks the layout from both dimensions. A wide but very short
+// pane cannot host the sprite layout: it needs roughly fourteen rows before the
+// battlefield, the log and the move list all fit.
+func LayoutForSize(cols, rows int) LayoutMode {
+	m := LayoutFor(cols)
+	switch {
+	case rows < 14:
+		return LayoutCompact
+	case rows < 26 && m.SpriteLayout():
+		// A sprite block is about (cols/9)/2 + 1 rows per active Pokemon, and
+		// there are two of them, so the sprite layouts need real vertical room.
+		return LayoutSidecar
+	}
+	return m
+}
+
 // String returns a human name for the mode.
 func (m LayoutMode) String() string {
 	switch m {
