@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/unnipv/pokemon-slowdown/internal/battle"
+	"strconv"
 )
 
 // renderOverlay draws the active overlay over the battle body.
@@ -147,81 +148,160 @@ func (bv *battleView) renderSwitchOverlay(width int) string {
 	return bv.overlayFrame("Switch", width, body)
 }
 
+// inspectables returns the Pokémon the inspect overlay cycles through: the
+// opponent's active Pokémon first, then ours.
+func (bv *battleView) inspectables() []*battle.Pokemon {
+	s := bv.state()
+	var out []*battle.Pokemon
+	out = append(out, activeOf(s.Opponent())...)
+	out = append(out, activeOf(s.MySide())...)
+	return out
+}
+
 func (bv *battleView) renderInspectOverlay(width int) string {
 	t := bv.theme
-	p := bv.inspectTarget()
-	if p == nil {
+	list := bv.inspectables()
+	if len(list) == 0 {
 		return bv.overlayFrame("Inspect", width, []string{t.Muted.Render("Nothing to inspect.")})
 	}
+	if bv.inspectIndex >= len(list) {
+		bv.inspectIndex = 0
+	}
+	p := list[bv.inspectIndex]
+	mine := bv.isMine(p)
 
 	title := SanitizeLine(p.Name)
-	if p.Gender != "" {
-		title += " " + genderGlyph(p.Gender)
+	if g := genderGlyph(p.Gender); g != "" {
+		title += " " + g
 	}
-	body := []string{
-		t.Fg.Bold(true).Render(title) + "  " + bv.typeList(p.Species, bv.curLayout),
-		"",
-		fmt.Sprintf("HP      %s %d%%", bv.hpBar(p.HPPercent, 12), p.HPPercent),
-		fmt.Sprintf("Status  %s", orDash(bv.statusBadge(p.Status))),
+	if types := bv.typeList(p.Species, LayoutStandard); types != "" {
+		title += "  " + types
 	}
-	if p.MaxHP > 0 && p.Active {
-		body = append(body, fmt.Sprintf("Actual  %d/%d", p.HP, p.MaxHP))
+
+	body := []string{t.Fg.Bold(true).Render(title)}
+	if len(list) > 1 {
+		body = append(body, t.Dim.Render(fmt.Sprintf("  %d of %d  ·  ↑/↓ to cycle",
+			bv.inspectIndex+1, len(list))))
 	}
-	if p.Active {
-		body = append(body, fmt.Sprintf("Level   %d", p.Level))
-	}
-	if b := bv.boostText(p); b != "" {
-		body = append(body, fmt.Sprintf("Boosts  %s", t.Accent.Render(b)))
+	body = append(body, "")
+
+	body = append(body, fmt.Sprintf("HP       %s %s", bv.hpBar(p.HPPercent, 12), bv.hpText(p, !mine)))
+	body = append(body, fmt.Sprintf("Status   %s", orDash(bv.statusBadge(p.Status))))
+	if p.Level > 0 {
+		body = append(body, fmt.Sprintf("Level    %d", p.Level))
 	}
 	if p.Terastallized {
-		body = append(body, fmt.Sprintf("Tera    %s", t.Primary.Render(p.TeraType)))
+		body = append(body, "Tera     "+t.Primary.Render(p.TeraType))
 	}
-	// Only information the server has actually revealed is shown for the
-	// opponent. Hidden information is never inferred.
-	if bv.isMine(p) {
-		if p.Item != "" {
-			body = append(body, fmt.Sprintf("Item    %s", p.Item))
+	if b := bv.boostText(p); b != "" {
+		body = append(body, "Boosts   "+b)
+	}
+	if p.Item != "" {
+		body = append(body, "Item     "+t.Muted.Render(p.Item))
+	}
+	if p.Ability != "" {
+		body = append(body, "Ability  "+t.Muted.Render(p.Ability))
+	}
+
+	body = append(body, "")
+	body = append(body, bv.renderStatTable(p, mine)...)
+	body = append(body, "")
+
+	if mine {
+		body = append(body, t.Muted.Render("Moves"))
+		if len(p.Moves) == 0 {
+			body = append(body, t.Dim.Render("  (not yet known)"))
 		}
-		if p.Ability != "" {
-			body = append(body, fmt.Sprintf("Ability %s", p.Ability))
-		}
-		if len(p.Moves) > 0 {
-			body = append(body, "", t.Muted.Render("Moves"))
-			for _, mv := range p.Moves {
-				pp := fmt.Sprintf("%d/%d", mv.PP, mv.MaxPP)
-				line := fmt.Sprintf("  %-18s %s", mv.Name, pp)
-				if mv.Disabled {
-					line = t.Disabled.Render(line + "  disabled")
-				}
-				body = append(body, line)
+		for _, mv := range p.Moves {
+			line := fmt.Sprintf("  %-18s %d/%d", mv.Name, mv.PP, mv.MaxPP)
+			if mv.Disabled {
+				line = t.Disabled.Render(line + "  disabled")
 			}
+			body = append(body, line)
 		}
 	} else {
-		body = append(body, "", t.Dim.Render("Only revealed information is shown."))
-		if p.Item != "" {
-			body = append(body, fmt.Sprintf("Item    %s", p.Item))
+		body = append(body, t.Muted.Render(fmt.Sprintf("Revealed moves (%d)", len(p.SeenMoves))))
+		if len(p.SeenMoves) == 0 {
+			body = append(body, t.Dim.Render("  none seen yet"))
 		}
-		if p.Ability != "" {
-			body = append(body, fmt.Sprintf("Ability %s", p.Ability))
+		for _, m := range p.SeenMoves {
+			body = append(body, "  "+t.Fg.Render(m))
 		}
+		body = append(body, "", t.Dim.Render("Only what the battle has revealed is shown."))
 	}
 	return bv.overlayFrame("Inspect", width, body)
 }
 
-func (bv *battleView) inspectTarget() *battle.Pokemon {
-	s := bv.state()
-	if s.Request != nil {
-		if p := s.MySide().ActiveAt(bv.slot); p != nil {
-			return p
+// renderStatTable shows base stats from the dex, the absolute current stats the
+// server reports for our own Pokémon, and the value after in-battle stat
+// changes.
+func (bv *battleView) renderStatTable(p *battle.Pokemon, mine bool) []string {
+	t := bv.theme
+	var base map[string]int
+	if bv.deps.Dex != nil {
+		if sp, ok := bv.deps.Dex.Species(p.Species); ok {
+			base = sp.BaseStats
 		}
 	}
-	if p := s.MySide().ActiveAt(0); p != nil {
-		return p
+
+	head := "  " + padRight("Stat", 8) + " " + padLeft("Base", 5) + " " + padLeft("Actual", 7) + " " + padLeft("In battle", 11)
+	out := []string{t.Muted.Render(head)}
+
+	for _, k := range battle.StatKeys {
+		label := battle.StatLabels[k]
+		if label == "" {
+			label = k
+		}
+		baseVal := "-"
+		if v, ok := base[k]; ok {
+			baseVal = strconv.Itoa(v)
+		}
+
+		actual := "-"
+		if v, ok := p.Stats[k]; ok {
+			actual = strconv.Itoa(v)
+		} else if mine && k == "hp" && p.MaxHP > 0 {
+			actual = strconv.Itoa(p.MaxHP)
+		} else if !mine {
+			actual = "?"
+		}
+
+		effective := "-"
+		switch {
+		case k == "hp":
+			switch {
+			case mine && p.MaxHP > 0:
+				effective = fmt.Sprintf("%d/%d", p.HP, p.MaxHP)
+			case p.HPPercent > 0:
+				effective = fmt.Sprintf("%d%%", p.HPPercent)
+			}
+		case p.Stats[k] > 0:
+			v := p.Stats[k]
+			if n := p.Boosts[k]; n != 0 {
+				eff := int(float64(v)*battle.BoostMultiplier(n) + 0.5)
+				text := fmt.Sprintf("%d %+d", eff, n)
+				if n > 0 {
+					effective = t.Success.Render(text)
+				} else {
+					effective = t.Danger.Render(text)
+				}
+			} else {
+				effective = t.Muted.Render(strconv.Itoa(v))
+			}
+		case !mine:
+			// The opponent's stats are not revealed; only public base stats are.
+			effective = t.Dim.Render("?")
+		}
+
+		// Pad by display width, not byte length: styled values carry escape
+		// sequences that would otherwise blow out the columns.
+		out = append(out, "  "+padRight(label, 8)+" "+
+			padLeft(baseVal, 5)+" "+padLeft(actual, 7)+" "+padLeft(effective, 11))
 	}
-	if p := s.Opponent().ActiveAt(0); p != nil {
-		return p
+	if !mine {
+		out = append(out, "", t.Dim.Render("  Opponent stats are not revealed."))
 	}
-	return nil
+	return out
 }
 
 func (bv *battleView) isMine(p *battle.Pokemon) bool {

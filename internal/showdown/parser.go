@@ -293,7 +293,7 @@ func parseBattle(b Base, typ, line string) (Event, bool) {
 		return BattleDamage{Base: b, Target: arg(1), HP: hp, Status: st, Tags: tags}, true
 	case "-heal":
 		hp, st := splitHP(arg(2))
-		return BattleHeal{Base: b, Target: arg(1), HP: hp, Status: st}, true
+		return BattleHeal{Base: b, Target: arg(1), HP: hp, Status: st, Tags: tags}, true
 	case "-sethp":
 		return BattleSetHP{Base: b, Target: arg(1), HP: arg(2)}, true
 	case "-status":

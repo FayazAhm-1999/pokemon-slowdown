@@ -108,10 +108,10 @@ Flags:
 | `1`–`4` | choose a move |
 | `s` | switch (then `1`–`6`, or arrow keys and enter) |
 | `t` | use the current mechanic — Tera, Mega, Z-Move or Dynamax |
-| `i` | inspect the selected Pokémon |
-| `l` | battle log |
+| `i` | inspect a Pokémon — base, actual and in-battle stats (↑/↓ to cycle) |
+| `l` | full battle log |
 | `c` | battle chat |
-| `tab` | cycle between battles |
+| `tab` | switch between open battles |
 | `:` | command palette |
 | `?` | contextual help |
 | `esc` | close an overlay, or return to the lobby |
@@ -122,7 +122,9 @@ In doubles, a move that needs a target opens a target picker with numeric
 shortcuts. Spread moves and self-targeting moves resolve without one.
 
 `q` never forfeits by accident: a live battle always asks for confirmation
-first. Forfeiting is an explicit command in the palette.
+first. Forfeiting is an explicit command in the palette. `tab` only switches
+between battles that are already open; after a battle ends, `enter` queues the
+same format again.
 
 ## Layouts
 

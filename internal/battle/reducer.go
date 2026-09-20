@@ -2,6 +2,7 @@ package battle
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/unnipv/pokemon-slowdown/internal/showdown"
@@ -95,6 +96,12 @@ func (r *Reducer) Apply(ev showdown.Event) {
 	case showdown.BattleInactive:
 		r.State.TimerOn = e.On
 		r.State.TimerMsg = e.Message
+		r.State.TimerSeconds = firstInt(e.Message)
+		if e.On {
+			r.log("timer", "Battle timer: %s", e.Message)
+		} else {
+			r.log("timer", "Battle timer off.")
+		}
 	case showdown.BattleUpkeep:
 		// Field condition durations are decremented in the UI from their
 		// start counts; the protocol does not resend them here.
@@ -113,6 +120,7 @@ func (r *Reducer) Apply(ev showdown.Event) {
 		name := identName(e.User)
 		if p != nil {
 			name = r.display(p)
+			p.RememberMove(e.Move)
 		}
 		if e.Tags.Has("still") {
 			break
@@ -164,23 +172,23 @@ func (r *Reducer) Apply(ev showdown.Event) {
 	// ---- damage / status ----
 	case showdown.BattleDamage:
 		if p := r.State.Find(e.Target); p != nil {
+			beforeHP, beforePct := p.HP, p.HPPercent
+			hadMax := p.MaxHP > 0
 			p.setCondition(e.HP)
 			if e.Status != "" {
 				p.Status = e.Status
 			}
-			if e.Tags.Has("from") {
-				r.log("damage", "%s lost HP (%s) [%s]", r.display(p), e.HP, e.Tags.Get("from"))
-			} else {
-				r.log("damage", "%s lost HP (%s)", r.display(p), e.HP)
-			}
+			r.log("damage", "%s lost %s%s", r.display(p), damageDelta(beforeHP, beforePct, p, hadMax), fromSuffix(e.Tags))
 		}
 	case showdown.BattleHeal:
 		if p := r.State.Find(e.Target); p != nil {
+			beforeHP, beforePct := p.HP, p.HPPercent
+			hadMax := p.MaxHP > 0
 			p.setCondition(e.HP)
 			if e.Status != "" {
 				p.Status = e.Status
 			}
-			r.log("heal", "%s restored HP (%s)", r.display(p), e.HP)
+			r.log("heal", "%s restored %s%s", r.display(p), healDelta(beforeHP, beforePct, p, hadMax), fromSuffix(e.Tags))
 		}
 	case showdown.BattleSetHP:
 		if p := r.State.Find(e.Target); p != nil {
@@ -213,7 +221,7 @@ func (r *Reducer) Apply(ev showdown.Event) {
 			} else {
 				p.Boosts[e.Stat] = clampBoost(p.Boosts[e.Stat] + e.Amount)
 			}
-			r.log("boost", "%s %s %s!", r.display(p), statName(e.Stat), riseFall(e.Amount))
+			r.log("boost", "%s's %s %s!", r.display(p), statName(e.Stat), riseFall(e.Amount))
 		}
 	case showdown.BattleSwapBoost:
 		if a, b := r.State.Find(e.Source), r.State.Find(e.Target); a != nil && b != nil {
@@ -546,6 +554,9 @@ func applySwitchRequest(p *Pokemon, sp PokemonSwitchRequest) {
 	p.Item = sp.Item
 	p.Ability = sp.Ability
 	p.BaseAbility = sp.BaseAbility
+	if len(sp.Stats) > 0 {
+		p.Stats = sp.Stats
+	}
 	p.Revealed = true
 }
 
@@ -678,6 +689,33 @@ func (r *Reducer) log(kind, format string, args ...any) {
 	}
 }
 
+// firstInt returns the first integer in a string, used to pull a countdown out
+// of the timer's prose messages.
+func firstInt(s string) int {
+	start := -1
+	for i := 0; i < len(s); i++ {
+		if s[i] >= '0' && s[i] <= '9' {
+			if start < 0 {
+				start = i
+			}
+			continue
+		}
+		if start >= 0 {
+			n, err := strconv.Atoi(s[start:i])
+			if err == nil {
+				return n
+			}
+			start = -1
+		}
+	}
+	if start >= 0 {
+		if n, err := strconv.Atoi(s[start:]); err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
 func identName(ident string) string {
 	_, _, name := parseIdent(ident)
 	if name == "" {
@@ -732,9 +770,53 @@ func statName(s string) string {
 
 func riseFall(n int) string {
 	if n > 0 {
-		return "rose"
+		return "rose" + degree(n)
 	}
-	return "fell"
+	return "fell" + degree(n)
+}
+
+// degree matches Pokémon's own wording for how large a stat change was.
+func degree(n int) string {
+	switch {
+	case n >= 3 || n <= -3:
+		return " drastically"
+	case n == 2 || n == -2:
+		return " sharply"
+	}
+	return ""
+}
+
+// damageDelta renders how much HP was lost, preferring a raw number for our own
+// Pokémon (where we know the maximum) and a percentage for the opponent's.
+func damageDelta(beforeHP, beforePct int, p *Pokemon, hadMax bool) string {
+	if hadMax && beforeHP > p.HP {
+		return fmt.Sprintf("%d HP (%d/%d)", beforeHP-p.HP, p.HP, p.MaxHP)
+	}
+	if beforePct > p.HPPercent {
+		return fmt.Sprintf("%d%% (%d%%)", beforePct-p.HPPercent, p.HPPercent)
+	}
+	return fmt.Sprintf("HP (%d%%)", p.HPPercent)
+}
+
+func healDelta(beforeHP, beforePct int, p *Pokemon, hadMax bool) string {
+	if hadMax && p.HP > beforeHP {
+		return fmt.Sprintf("%d HP (%d/%d)", p.HP-beforeHP, p.HP, p.MaxHP)
+	}
+	if p.HPPercent > beforePct {
+		return fmt.Sprintf("%d%% (%d%%)", p.HPPercent-beforePct, p.HPPercent)
+	}
+	return fmt.Sprintf("HP (%d%%)", p.HPPercent)
+}
+
+// fromSuffix renders the "[from] ..." tag, which explains what caused an
+// effect. It is the difference between "lost 45%" and "lost 45% to Stealth
+// Rock".
+func fromSuffix(tags showdown.Tags) string {
+	from := tags.Get("from")
+	if from == "" {
+		return ""
+	}
+	return " [" + cleanCondition(from) + "]"
 }
 
 var statusNames = map[string]string{

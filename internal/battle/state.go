@@ -41,8 +41,9 @@ type State struct {
 	// AwaitingChoice is true while the server expects a choice from us.
 	AwaitingChoice bool
 
-	TimerOn  bool
-	TimerMsg string
+	TimerOn      bool
+	TimerMsg     string
+	TimerSeconds int
 
 	Ended  bool
 	Winner string
@@ -96,6 +97,15 @@ type Pokemon struct {
 	Item        string
 	Ability     string
 	BaseAbility string
+
+	// Stats are the absolute, current stat values as reported by the server
+	// for our own Pokémon (after level, nature, EVs, IVs and any item or
+	// ability that modifies them at switch-in). Empty for the opponent, whose
+	// stats are not revealed.
+	Stats map[string]int
+	// SeenMoves records moves this Pokémon has actually used. For the opponent
+	// this is the only legitimate source of move information.
+	SeenMoves []string
 
 	Boosts    map[string]int
 	Volatiles map[string]bool
@@ -382,4 +392,41 @@ func (p *Pokemon) BoostTotal() int {
 		total += v
 	}
 	return total
+}
+
+// RememberMove records a move this Pokémon has used, ignoring duplicates.
+func (p *Pokemon) RememberMove(name string) {
+	if name == "" {
+		return
+	}
+	for _, m := range p.SeenMoves {
+		if m == name {
+			return
+		}
+	}
+	p.SeenMoves = append(p.SeenMoves, name)
+}
+
+// BoostMultiplier converts a stat stage (-6..+6) into the multiplier the game
+// applies to the stat itself.
+func BoostMultiplier(stage int) float64 {
+	if stage > 6 {
+		stage = 6
+	}
+	if stage < -6 {
+		stage = -6
+	}
+	if stage >= 0 {
+		return float64(2+stage) / 2
+	}
+	return 2 / float64(2-stage)
+}
+
+// StatKeys is the canonical stat order for display.
+var StatKeys = []string{"hp", "atk", "def", "spa", "spd", "spe"}
+
+// StatLabels maps stat keys to human labels.
+var StatLabels = map[string]string{
+	"hp": "HP", "atk": "Attack", "def": "Defense",
+	"spa": "Sp. Atk", "spd": "Sp. Def", "spe": "Speed",
 }

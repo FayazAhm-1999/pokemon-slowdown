@@ -10,6 +10,7 @@ import (
 	"github.com/unnipv/pokemon-slowdown/internal/dex"
 	"github.com/unnipv/pokemon-slowdown/internal/showdown"
 	"github.com/unnipv/pokemon-slowdown/internal/sprites"
+	"time"
 )
 
 // overlayKind selects the battle overlay currently open.
@@ -46,6 +47,7 @@ type battleView struct {
 	reducer *battle.Reducer
 
 	curLayout LayoutMode
+	curWidth  int
 
 	overlay       overlayKind
 	overlayCursor int
@@ -71,6 +73,12 @@ type battleView struct {
 	animFrame int
 	titleText string
 	lastError string
+
+	// timerSeenAt is when the last timer message arrived, so the countdown can
+	// tick locally between server messages.
+	timerSeenAt time.Time
+	// inspectIndex selects which Pokémon the inspect overlay shows.
+	inspectIndex int
 }
 
 func newBattleView(room string, owner *Model) *battleView {
@@ -122,6 +130,9 @@ func (bv *battleView) apply(ev showdown.Event) {
 	}
 	if e, ok := ev.(showdown.BattleError); ok {
 		bv.lastError = SanitizeLine(e.Message)
+	}
+	if _, ok := ev.(showdown.BattleInactive); ok {
+		bv.timerSeenAt = time.Now()
 	}
 	if _, ok := ev.(showdown.BattleStart); ok {
 		bv.previewOrder = nil
@@ -212,7 +223,7 @@ func (bv *battleView) renderSprite(key string, sprite *sprites.Sprite) {
 	if sprite.Animated {
 		frame = bv.spriteFrames[key] % sprite.FrameCount()
 	}
-	cols, rows := bv.layout().SpriteCells()
+	cols, rows := bv.spriteCells()
 	if cols == 0 {
 		return
 	}
@@ -263,8 +274,6 @@ func (bv *battleView) refForKey(key string) sprites.Ref {
 	}
 }
 
-func (bv *battleView) layout() LayoutMode { return bv.curLayout }
-
 // ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------
@@ -281,6 +290,22 @@ func (bv *battleView) handleKey(msg tea.KeyPressMsg, m *Model) (tea.Cmd, bool) {
 	// Team preview takes priority: it is a different interaction entirely.
 	if s.TeamPreview {
 		return bv.handlePreviewKey(key, m), true
+	}
+
+	// After a battle, enter queues the same format again. That is the "next
+	// battle" action; tab is only for switching between battles already open.
+	if s.Ended {
+		switch key {
+		case "enter", "r":
+			id := showdown.ToID(s.Tier)
+			if bv.owner == nil {
+				return nil, true
+			}
+			if id == "" {
+				id = bv.owner.cfg.DefaultFormat
+			}
+			return bv.owner.requeue(id), true
+		}
 	}
 
 	switch key {
@@ -307,7 +332,7 @@ func (bv *battleView) handleKey(msg tea.KeyPressMsg, m *Model) (tea.Cmd, bool) {
 		}
 		return nil, true
 	case "tab":
-		m.nextBattle()
+		m.switchBattle()
 		return nil, true
 	}
 
@@ -593,8 +618,19 @@ func (bv *battleView) handleOverlayKey(key string, m *Model) tea.Cmd {
 			bv.logScroll = clamp(bv.logScroll+8, 0, len(s.Log))
 		}
 	case overlayInspect:
-		if key == "esc" || key == "i" {
+		switch key {
+		case "esc", "i":
 			bv.overlay = overlayNone
+		case "up", "k", "left":
+			bv.inspectIndex--
+			if bv.inspectIndex < 0 {
+				bv.inspectIndex = max(0, len(bv.inspectables())-1)
+			}
+		case "down", "j", "right", "tab":
+			bv.inspectIndex++
+			if n := len(bv.inspectables()); n > 0 && bv.inspectIndex >= n {
+				bv.inspectIndex = 0
+			}
 		}
 	case overlayChat:
 		switch key {

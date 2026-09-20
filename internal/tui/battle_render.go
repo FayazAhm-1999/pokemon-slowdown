@@ -8,7 +8,10 @@ import (
 
 	"github.com/unnipv/pokemon-slowdown/internal/battle"
 	"github.com/unnipv/pokemon-slowdown/internal/config"
+	"github.com/unnipv/pokemon-slowdown/internal/showdown"
 	"github.com/unnipv/pokemon-slowdown/internal/sprites"
+	"strconv"
+	"time"
 )
 
 // This file renders the battle screen. The design goal is playability: the
@@ -18,6 +21,7 @@ import (
 
 func (bv *battleView) render(width, height int, layout LayoutMode) string {
 	bv.curLayout = layout
+	bv.curWidth = width
 	if bv.owner != nil && bv.owner.sprites != nil {
 		// Declare which sprites are on screen before rendering so the layer can
 		// invalidate sentinels when that set changes.
@@ -71,15 +75,17 @@ func (bv *battleView) render(width, height int, layout LayoutMode) string {
 	return body
 }
 
-// maxLogTail is how many recent log lines to show inline, per layout.
+// maxLogTail is how many lines of the current turn to show inline, per layout.
 func maxLogTail(layout LayoutMode) int {
 	switch layout {
-	case LayoutCinematic, LayoutStandard:
-		return 3
+	case LayoutCinematic:
+		return 9
+	case LayoutStandard:
+		return 8
 	case LayoutSidecar:
-		return 3
+		return 7
 	default:
-		return 2
+		return 5
 	}
 }
 
@@ -92,7 +98,7 @@ func (bv *battleView) renderHeader(width int, layout LayoutMode) string {
 		right = fmt.Sprintf("Turn %d", s.Turn)
 	}
 	if s.TimerOn {
-		right += " ⏱ timer"
+		right += "  " + bv.timerText()
 	}
 	rightW := lipgloss.Width(right)
 
@@ -115,6 +121,33 @@ func (bv *battleView) renderHeader(width int, layout LayoutMode) string {
 		pad = 1
 	}
 	return head + strings.Repeat(" ", pad) + t.Fg.Render(right)
+}
+
+// timerText renders the battle timer as a live countdown, coloured by how much
+// time is left, so "is the timer running" is answerable at a glance.
+func (bv *battleView) timerText() string {
+	s := bv.state()
+	left := s.TimerSeconds
+	if left > 0 && !bv.timerSeenAt.IsZero() {
+		left -= int(time.Since(bv.timerSeenAt).Seconds())
+	}
+	if left < 0 {
+		left = 0
+	}
+
+	style := bv.theme.Muted
+	switch {
+	case left == 0:
+		style = bv.theme.Warning
+	case left <= 20:
+		style = bv.theme.Danger
+	case left <= 60:
+		style = bv.theme.Warning
+	}
+	if left > 0 {
+		return style.Render(fmt.Sprintf("⏱ %d:%02d", left/60, left%60))
+	}
+	return style.Render("⏱ on")
 }
 
 // ---------------------------------------------------------------------------
@@ -429,8 +462,13 @@ func (bv *battleView) renderConditions() string {
 	return "  " + strings.Join(parts, "  ")
 }
 
-// renderLogTail shows the most recent battle events inline. Without it, HP
-// silently drops and statuses appear with no explanation.
+// renderLogTail shows what has happened in the current turn, in full where
+// there is room.
+//
+// A turn is one logical unit - a move, whether it connected, how much it hurt,
+// what it caused - and those events arrive within milliseconds of each other.
+// Showing an arbitrary "last three lines" window makes the turn impossible to
+// follow, so the tail always starts at the turn marker.
 func (bv *battleView) renderLogTail(n int) []string {
 	if n <= 0 {
 		return nil
@@ -440,14 +478,37 @@ func (bv *battleView) renderLogTail(n int) []string {
 	for end > 0 && log[end-1].Text == "" {
 		end--
 	}
-	start := end - n
-	if start < 0 {
-		start = 0
+	if end == 0 {
+		return nil
+	}
+
+	// Start at the marker that opened the current turn.
+	start := end
+	for i := end - 1; i >= 0; i-- {
+		if log[i].Kind == "turn" {
+			start = i
+			break
+		}
+	}
+	// If the turn is longer than the space available, show its most recent part.
+	if end-start > n {
+		start = end - n
+	}
+	// If the current turn has only just begun, fill the remaining space with
+	// the end of the previous turn so there is always something to read.
+	if end-start < n && start > 0 {
+		extra := n - (end - start)
+		if start-extra > 0 {
+			start -= extra
+		} else {
+			start = 0
+		}
 	}
 	if start >= end {
 		return nil
 	}
-	out := make([]string, 0, n)
+
+	out := make([]string, 0, end-start)
 	for _, e := range log[start:end] {
 		out = append(out, "  "+bv.styleLogLine(e))
 	}
@@ -643,7 +704,11 @@ func (bv *battleView) renderResult(width int) []string {
 	}
 	out = append(out, "")
 	out = append(out, t.Muted.Render("  replay: https://replay.pokemonshowdown.com/"+s.RoomID))
-	out = append(out, t.Dim.Render("  esc back to lobby · tab next battle"))
+	out = append(out, "")
+	if id := showdown.ToID(s.Tier); id != "" {
+		out = append(out, t.Success.Render("  [enter] queue "+FormatName(id)+" again"))
+	}
+	out = append(out, t.Dim.Render("  [esc] lobby   [tab] switch battle   [l] log   [c] chat"))
 	return out
 }
 
@@ -658,7 +723,7 @@ func (bv *battleView) renderResult(width int) []string {
 // first cell; spriteLayer substitutes that rune for a graphics payload on the
 // way to the terminal.
 func (bv *battleView) spriteBlock(p *battle.Pokemon, layout LayoutMode) string {
-	cols, rows := layout.SpriteCells()
+	cols, rows := bv.spriteCells()
 	if cols == 0 || p == nil || p.Species == "" || bv.deps.Renderer == nil {
 		return ""
 	}
@@ -675,6 +740,30 @@ func (bv *battleView) spriteBlock(p *battle.Pokemon, layout LayoutMode) string {
 	return bv.placeholderBlock(cols, rows)
 }
 
+// spriteCells sizes the sprite box from the available width rather than from a
+// fixed per-band size. A fixed box is either wasteful in a wide pane or cramped
+// in a narrow one, which is what makes the middle widths feel wrong.
+func (bv *battleView) spriteCells() (int, int) {
+	if !bv.curLayout.SpriteLayout() {
+		return 0, 0
+	}
+	w := bv.curWidth
+	if w <= 0 {
+		w = 100
+	}
+	cols := w / 9
+	if cols < 9 {
+		cols = 9
+	}
+	if cols > 20 {
+		cols = 20
+	}
+	// A terminal cell is about twice as tall as it is wide, so half-blocks need
+	// roughly half as many rows as columns to keep the sprite square.
+	rows := (cols + 1) / 2
+	return cols, rows
+}
+
 // outOfBandPayload encodes the graphics payload for a sprite, cached per
 // species so it is only encoded when the sprite actually changes.
 func (bv *battleView) outOfBandPayload(p *battle.Pokemon, ref sprites.Ref, back bool, cols, rows int) (string, bool) {
@@ -688,7 +777,9 @@ func (bv *battleView) outOfBandPayload(p *battle.Pokemon, ref sprites.Ref, back 
 	if !ok || sp.Static == nil {
 		return "", false
 	}
-	if cached, ok := bv.spritePayload[ref.Key()]; ok && cached != "" {
+	// The payload depends on the box size, so cache on both.
+	cacheKey := ref.Key() + "|" + strconv.Itoa(cols) + "x" + strconv.Itoa(rows)
+	if cached, ok := bv.spritePayload[cacheKey]; ok && cached != "" {
 		return cached, true
 	}
 	id := bv.owner.sprites.ID(bv.spriteSlot(p, back))
@@ -699,7 +790,7 @@ func (bv *battleView) outOfBandPayload(p *battle.Pokemon, ref sprites.Ref, back 
 	// Delete this slot's previous image before drawing the new one, so a
 	// replacement never leaves the old sprite underneath.
 	payload := sprites.KittyDeleteImage(id) + out
-	bv.spritePayload[ref.Key()] = payload
+	bv.spritePayload[cacheKey] = payload
 	return payload, true
 }
 
@@ -801,11 +892,21 @@ func cleanLabel(s string) string {
 	return s
 }
 
-// padRight pads s with spaces to width n, using rune width.
+// padRight pads s with spaces to width n, using display width.
 func padRight(s string, n int) string {
 	w := lipgloss.Width(s)
 	if w >= n {
 		return s
 	}
 	return s + strings.Repeat(" ", n-w)
+}
+
+// padLeft right-aligns s within width n, using display width so styled values
+// still line up.
+func padLeft(s string, n int) string {
+	w := lipgloss.Width(s)
+	if w >= n {
+		return s
+	}
+	return strings.Repeat(" ", n-w) + s
 }

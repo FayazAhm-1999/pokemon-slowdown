@@ -377,6 +377,7 @@ type BattleHeal struct {
 	Target string
 	HP     string
 	Status string
+	Tags   Tags
 }
 
 // BattleSetHP sets a Pokémon's HP directly.

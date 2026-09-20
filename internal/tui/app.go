@@ -153,6 +153,15 @@ func New(cfg config.Config, deps Deps) *Model {
 	return m
 }
 
+// clearSprites invalidates the out-of-band sprite layer. Any screen that does
+// not draw sprites must call this, or graphics from the previous screen stay on
+// the terminal.
+func (m *Model) clearSprites() {
+	if m.sprites != nil {
+		m.sprites.begin("none")
+	}
+}
+
 // SpriteWriter wraps the terminal writer so out-of-band sprite graphics are
 // injected into each rendered frame. Only needed when the renderer supports
 // payloads; the block renderer draws inline.
@@ -467,11 +476,17 @@ func (m *Model) render() string {
 		if bv := m.activeBattle(); bv != nil {
 			body = bv.render(m.width, m.height-2, m.layout)
 		} else {
+			m.clearSprites()
 			body = m.theme.Muted.Render("No battle selected. Press esc to return to the lobby.")
 		}
 	case screenTeams:
+		m.clearSprites()
 		body = m.renderTeams(m.width, m.height-2)
 	default:
+		// Leaving the battle must take its sprites with it: the layer is only
+		// redrawn by the battle view, so without this the graphics linger over
+		// whatever screen comes next.
+		m.clearSprites()
 		body = m.renderLobby(m.width, m.height-2)
 	}
 
@@ -508,9 +523,9 @@ func (m *Model) renderTooSmall() string {
 func (m *Model) renderStatus() string {
 	left := m.theme.Dim.Render("esc lobby")
 	if m.screen == screenBattle {
-		left = m.theme.Dim.Render("1-4 move  s switch  i inspect  l log  c chat  : palette")
+		left = m.theme.Dim.Render("1-4 move  s switch  i inspect  l log  c chat  tab battle  : palette")
 		if m.layout == LayoutCompact {
-			left = m.theme.Dim.Render("1-4 move  s switch  : palette")
+			left = m.theme.Dim.Render("1-4 move  s switch  tab battle  : palette")
 		}
 	}
 	if m.palette.open || m.helpOpen {
@@ -559,7 +574,8 @@ func (m *Model) renderHelp() string {
 		"  i          inspect the selected Pokémon",
 		"  l          battle log",
 		"  c          battle chat",
-		"  tab        next battle",
+		"  tab        switch between open battles",
+		"  enter      (after a battle) queue the same format again",
 		"  :          command palette",
 		"  ?          this help",
 		"  esc        close / back to lobby",
@@ -635,8 +651,9 @@ func (m *Model) openBattle(room string) {
 	m.screen = screenBattle
 }
 
-// nextBattle cycles to the next battle that needs input, then to the next one.
-func (m *Model) nextBattle() {
+// switchBattle moves focus between open battles. It prefers a battle that is
+// waiting on the player, so tab always lands somewhere useful.
+func (m *Model) switchBattle() {
 	if len(m.order) == 0 {
 		return
 	}

@@ -43,8 +43,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.helpOpen = true
 		return m, nil
 	case "tab":
+		// Tab switches between open battles. It never starts or queues one.
 		if m.screen == screenBattle {
-			m.nextBattle()
+			m.switchBattle()
+		} else if len(m.order) > 0 {
+			m.openBattle(m.order[len(m.order)-1])
 		}
 		return m, nil
 	}
@@ -104,14 +107,29 @@ func (m *Model) handleConfirmKey(key string) tea.Cmd {
 func (m *Model) handleLobbyKey(key string) tea.Cmd {
 	items := m.filteredFormats()
 	switch key {
-	case "up", "k":
+	case "up":
 		m.formatCursor = clamp(m.formatCursor-1, 0, max(0, len(items)-1))
-	case "down", "j":
+	case "down":
 		m.formatCursor = clamp(m.formatCursor+1, 0, max(0, len(items)-1))
+	case "pgup":
+		m.formatCursor = clamp(m.formatCursor-10, 0, max(0, len(items)-1))
+	case "pgdown":
+		m.formatCursor = clamp(m.formatCursor+10, 0, max(0, len(items)-1))
+	case "home":
+		m.formatCursor = 0
+	case "end":
+		m.formatCursor = max(0, len(items)-1)
 	case "enter":
 		if m.formatCursor < len(items) {
 			return m.queueFormat(items[m.formatCursor])
 		}
+	case "tab":
+		// Jump to the most recent battle, if there is one.
+		if len(m.order) > 0 {
+			m.openBattle(m.order[len(m.order)-1])
+		}
+	case "ctrl+t":
+		m.screen = screenTeams
 	case "backspace":
 		if m.formatFilter != "" {
 			m.formatFilter = m.formatFilter[:len(m.formatFilter)-1]
@@ -120,14 +138,17 @@ func (m *Model) handleLobbyKey(key string) tea.Cmd {
 	case "esc":
 		m.formatFilter = ""
 		m.formatCursor = 0
-	case "t":
-		m.screen = screenTeams
 	default:
-		if r := printable(key); r != 0 && r != ' ' {
-			m.formatFilter += string(r)
-			m.formatCursor = 0
-		} else if key == "space" {
+		// Every printable key filters the list. Letter shortcuts would make
+		// the search box unusable: typing "t" would open Teams instead of
+		// searching for "Ting-Lu".
+		if key == "space" {
 			m.formatFilter += " "
+			m.formatCursor = 0
+			break
+		}
+		if r := printable(key); r != 0 {
+			m.formatFilter += string(r)
 			m.formatCursor = 0
 		}
 	}
@@ -179,6 +200,21 @@ func (m *Model) queueFormat(f showdown.Format) tea.Cmd {
 		_ = client.Search(format)
 		return nil
 	}
+}
+
+// requeue starts a new search for a format, used from the end-of-battle screen
+// so "play another" is one keystroke.
+func (m *Model) requeue(formatID string) tea.Cmd {
+	if formatID == "" {
+		formatID = m.cfg.DefaultFormat
+	}
+	return m.queueFormat(showdown.Format{
+		ID:            formatID,
+		Name:          FormatName(formatID),
+		Random:        strings.Contains(formatID, "random"),
+		Searchable:    true,
+		Challengeable: true,
+	})
 }
 
 // teamForFormat picks a stored team to submit. Random formats need none.
@@ -313,7 +349,7 @@ func (m *Model) renderLobbySide(width, height int) string {
 		b.WriteString(t.Danger.Render(truncate(m.authErr, width-2)) + "\n")
 	}
 
-	b.WriteString("\n" + t.Muted.Render("enter queue · t teams · : palette · ? help"))
+	b.WriteString("\n" + t.Muted.Render("enter queue · ctrl+t teams · tab battle · : palette · ? help"))
 	return b.String()
 }
 
