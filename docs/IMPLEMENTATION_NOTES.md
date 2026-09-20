@@ -8,6 +8,41 @@ Kept because these are the things that are expensive to rediscover.
 These were verified against upstream documentation and, where the docs were
 silent, against `sim/` source in `smogon/pokemon-showdown`.
 
+### Outbound framing (the one that bites hardest)
+
+Every client-to-server message **must contain a `|`**. From `server/users.ts`:
+
+```js
+const pipeIndex = message.indexOf('|');
+if (pipeIndex < 0) {
+    // drop invalid messages without a pipe character
+    connection.popup(`Invalid message; messages should be in the format \`ROOMID|MESSAGE\`.`);
+    return;
+}
+```
+
+A global command is therefore `|/search gen9randombattle` — the leading pipe
+with an **empty room id** — not `/search gen9randombattle`. Sending the bare
+command is silently dropped, which means every command fails at once while the
+connection still looks perfectly healthy: you receive formats, you receive a
+guest name, and nothing you send has any effect.
+
+PROTOCOL.md's phrase "`|/command` is equivalent to `|/pm ~, /command`" reads
+like notation but the pipe is literal. This cost real debugging time, so
+`Client.SendTo` always emits the separator, `readCommand` in the test suite
+fails any message without one, and `TestOutboundMessagesAlwaysContainPipe`
+asserts the exact bytes for every command.
+
+A mock server that accepts anything will not catch this. Enforce the framing
+rule in mocks.
+
+### Command replies are PMs
+
+Replies to roomless commands arrive in the PM box, not as room messages. Command
+errors, `/whoami` output and similar are all `|pm|~|...`. A client that only
+renders room messages shows *nothing* when a command fails, which makes a
+failure look like a no-op. `slowdown` surfaces system PMs as status messages.
+
 ### Framing
 
 - Server payloads may batch several rooms. A line starting with `>` begins a

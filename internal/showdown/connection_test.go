@@ -54,6 +54,9 @@ func (s *wsServer) connectionCount() int {
 	return s.conns
 }
 
+// readCommand reads one client message and asserts it is well formed. The live
+// server silently drops any message without a room separator, so a bare command
+// would look like a passing test while doing nothing in production.
 func readCommand(t *testing.T, conn *websocket.Conn, timeout time.Duration) string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -62,7 +65,11 @@ func readCommand(t *testing.T, conn *websocket.Conn, timeout time.Duration) stri
 	if err != nil {
 		return ""
 	}
-	return string(data)
+	msg := string(data)
+	if !strings.Contains(msg, "|") {
+		t.Errorf("server would drop this message: no room separator: %q", msg)
+	}
+	return msg
 }
 
 // waitFor polls until fn is true or the deadline passes.
@@ -151,8 +158,8 @@ func TestGuestLoginSendsTrn(t *testing.T) {
 		t.Fatal("server never accepted a connection")
 	}
 
-	if got := readCommand(t, conn, 5*time.Second); got != "/trn slowpoke" {
-		t.Fatalf("guest login command = %q, want /trn slowpoke", got)
+	if got := readCommand(t, conn, 5*time.Second); got != "|/trn slowpoke" {
+		t.Fatalf("guest login command = %q, want |/trn slowpoke", got)
 	}
 }
 
@@ -254,7 +261,7 @@ func TestClientReconnectsAndRejoins(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 		for _, j := range joined {
-			if j == "/join lobby" {
+			if j == "|/join lobby" {
 				return true
 			}
 		}
@@ -298,8 +305,58 @@ func TestChooseIncludesRqid(t *testing.T) {
 	if err := c.Challenge("bob", "gen9randombattle"); err != nil {
 		t.Fatalf("Challenge: %v", err)
 	}
-	if got := readCommand(t, conn, 5*time.Second); got != "/challenge bob, gen9randombattle" {
+	if got := readCommand(t, conn, 5*time.Second); got != "|/challenge bob, gen9randombattle" {
 		t.Fatalf("challenge command = %q", got)
+	}
+}
+
+// TestOutboundMessagesAlwaysContainPipe guards the single easiest way to break
+// every command at once: the live server drops messages without a room
+// separator, so global commands must still be prefixed with "|".
+func TestOutboundMessagesAlwaysContainPipe(t *testing.T) {
+	connCh := make(chan *websocket.Conn, 1)
+	srv := newWSServer(t, func(conn *websocket.Conn) { connCh <- conn })
+
+	c := NewClient(srv.url())
+	c.Start()
+	defer c.Close()
+
+	collect(t, c, func(ev Event) bool {
+		_, ok := ev.(Connected)
+		return ok
+	}, 5*time.Second)
+
+	var conn *websocket.Conn
+	select {
+	case conn = <-connCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no connection")
+	}
+
+	cases := []struct {
+		name string
+		send func() error
+		want string
+	}{
+		{"search", func() error { return c.Search("gen9randombattle") }, "|/search gen9randombattle"},
+		{"cancel", func() error { return c.CancelSearch() }, "|/cancelsearch"},
+		{"join", func() error { return c.JoinRoom("lobby") }, "|/join lobby"},
+		{"whoami", func() error { return c.WhoAmI() }, "|/whoami"},
+		{"team", func() error { return c.SendTeam("") }, "|/utm null"},
+		{"challenge", func() error { return c.Challenge("bob", "gen9ou") }, "|/challenge bob, gen9ou"},
+		{"accept", func() error { return c.AcceptChallenge("bob") }, "|/accept bob"},
+		{"reject", func() error { return c.RejectChallenge("bob") }, "|/reject bob"},
+		{"query", func() error { return c.Query("roomlist") }, "|/query roomlist"},
+		{"choose", func() error { return c.Choose("battle-1", "move 1", 7) }, "battle-1|/choose move 1|7"},
+		{"chat", func() error { return c.Chat("battle-1", "hi") }, "battle-1|hi"},
+	}
+	for _, tc := range cases {
+		if err := tc.send(); err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if got := readCommand(t, conn, 5*time.Second); got != tc.want {
+			t.Errorf("%s: sent %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }
 

@@ -299,6 +299,20 @@ func (m *Model) handleShowdownEvent(ev showdown.Event) []tea.Cmd {
 		if m.deps.Notifier != nil {
 			m.deps.Notifier.Notify(title, body)
 		}
+	case showdown.PM:
+		// Replies to roomless commands — including every command error — come
+		// back as a PM from the server rather than as a room message. Dropping
+		// these makes failures look like nothing happened.
+		sender := SanitizeLine(e.Sender)
+		body := SanitizeLine(e.Message)
+		if sender == "" || sender == "~" {
+			m.setToast(body)
+			break
+		}
+		m.setToast("PM from " + sender + ": " + body)
+		if m.deps.Notifier != nil {
+			m.deps.Notifier.Notify("PM from "+sender, body)
+		}
 	case showdown.NameTaken:
 		m.setToast("Name taken: " + SanitizeLine(e.Message))
 	case showdown.FormatsUpdated:
@@ -447,12 +461,13 @@ func (m *Model) render() string {
 	}
 
 	status := m.renderStatus()
-	toast := m.renderToast()
-
-	out := body + "\n" + status
-	if toast != "" {
-		out = m.overlayToast(out, toast)
+	out := body
+	// The toast gets its own line so it cannot be clipped off the end of an
+	// already-full status line.
+	if toast := m.renderToast(); toast != "" {
+		out += "\n" + toast
 	}
+	out += "\n" + status
 	if m.helpOpen {
 		out = m.overlayBox(out, m.renderHelp())
 	}
@@ -569,21 +584,6 @@ func (m *Model) overlayBox(base, box string) string {
 		}
 	}
 	return strings.Join(out, "\n")
-}
-
-func (m *Model) overlayToast(base, toast string) string {
-	lines := strings.Split(base, "\n")
-	if len(lines) == 0 {
-		return base
-	}
-	// Put the toast on the status line, right-aligned.
-	idx := len(lines) - 1
-	pad := m.width - lipgloss.Width(lines[idx]) - lipgloss.Width(toast)
-	if pad < 1 {
-		pad = 1
-	}
-	lines[idx] = lines[idx] + strings.Repeat(" ", pad) + toast
-	return strings.Join(lines, "\n")
 }
 
 func (m *Model) setToast(s string) {

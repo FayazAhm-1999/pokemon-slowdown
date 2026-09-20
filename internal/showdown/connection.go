@@ -245,6 +245,11 @@ func (c *Client) rejoin() {
 func (c *Client) Send(command string) error { return c.SendTo("", command) }
 
 // SendTo writes a command scoped to a room.
+//
+// The room separator is required even when the room is empty: the server drops
+// any message without a pipe ("messages should be in the format
+// ROOMID|MESSAGE"). A global command is therefore sent as "|/search ...", not
+// "/search ...".
 func (c *Client) SendTo(roomID, command string) error {
 	c.mu.Lock()
 	conn := c.conn
@@ -252,10 +257,7 @@ func (c *Client) SendTo(roomID, command string) error {
 	if conn == nil {
 		return errors.New("showdown: not connected")
 	}
-	msg := command
-	if roomID != "" {
-		msg = roomID + "|" + command
-	}
+	msg := roomID + "|" + command
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return conn.Write(ctx, websocket.MessageText, []byte(msg))
