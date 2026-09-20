@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -153,6 +154,10 @@ func Run(opts Options) error {
 	}()
 
 	_, err = program.Run()
+	if errors.Is(err, tea.ErrProgramKilled) {
+		// A user interrupt (Ctrl+C) or signal is a clean exit, not a failure.
+		return nil
+	}
 	return err
 }
 
