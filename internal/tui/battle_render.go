@@ -50,23 +50,53 @@ func (bv *battleView) render(width, height int, layout LayoutMode) string {
 		moves = []string{"", t.Muted.Render(bv.waitingLine())}
 	}
 
-	// Give the log whatever vertical space is left after the essentials, so a
-	// long history can never push the move list off the bottom of the screen.
-	used := 1 + len(field) + len(conds) + len(moves)
-	budget := height - used - 1
-	if budget > maxLogTail(layout) {
-		budget = maxLogTail(layout)
+	// Assemble in priority order and stop when the screen is full. The header
+	// and the move list are essential; the field, conditions and log tail fill
+	// whatever is left. Building past the height would push the status line off
+	// the bottom, where Bubble Tea clips it.
+	budget := height
+	if budget <= 0 {
+		budget = 1 << 30
 	}
-	logTail := bv.renderLogTail(budget)
-
-	lines := make([]string, 0, height)
+	lines := make([]string, 0, 32)
 	lines = append(lines, header)
-	lines = append(lines, field...)
-	lines = append(lines, conds...)
-	lines = append(lines, logTail...)
-	lines = append(lines, moves...)
+	budget--
+
+	// Count actual lines, not slice elements: a sprite block is a single
+	// element holding a joined multi-line string.
+	take := func(block []string) {
+		for _, item := range block {
+			sub := strings.Split(item, "\n")
+			if len(sub) <= budget {
+				lines = append(lines, sub...)
+				budget -= len(sub)
+				continue
+			}
+			if budget > 0 {
+				lines = append(lines, sub[:budget]...)
+				budget = 0
+			}
+			return
+		}
+	}
+
+	take(field)
+	take(conds)
+	if tail := bv.renderLogTail(min(maxLogTail(layout), budget)); len(tail) > 0 {
+		take(tail)
+	}
+	// The moves are essential: make room for them by giving back anything that
+	// was spent on the tail first.
+	if needed := lineCount(moves); needed > budget {
+		short := needed - budget
+		if short <= len(lines) {
+			lines = lines[:len(lines)-short]
+			budget += short
+		}
+	}
+	take(moves)
 	if s.Ended {
-		lines = append(lines, bv.renderResult(width)...)
+		take(bv.renderResult(width))
 	}
 
 	// Pad to the full height so an overlay has the whole screen to be placed
@@ -93,6 +123,16 @@ func maxLogTail(layout LayoutMode) int {
 	default:
 		return 5
 	}
+}
+
+// lineCount counts the rendered lines in a block, which may contain joined
+// multi-line strings.
+func lineCount(block []string) int {
+	n := 0
+	for _, item := range block {
+		n += strings.Count(item, "\n") + 1
+	}
+	return n
 }
 
 func (bv *battleView) renderHeader(width int, layout LayoutMode) string {

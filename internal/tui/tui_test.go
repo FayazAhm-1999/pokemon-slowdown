@@ -603,3 +603,32 @@ func TestInspectOverlayFitsOnScreen(t *testing.T) {
 		}
 	}
 }
+
+// TestEverySizeFitsAndKeepsTheStatusLine guards the bottom line. The status bar
+// is rendered last, so it is the first thing lost when the view overflows: an
+// over-tall view gets clipped by Bubble Tea and the keyboard hints disappear.
+func TestEverySizeFitsAndKeepsTheStatusLine(t *testing.T) {
+	m := testModel(t, config.Default())
+	feedFixtureUntilTurn(t, m, "gen9-singles.txt", 4)
+
+	for _, rows := range []int{14, 18, 24, 30, 45, 60} {
+		for _, cols := range []int{40, 80, 120, 180} {
+			m.width, m.height = cols, rows
+			m.layout = LayoutForSize(cols, rows)
+
+			out := m.render()
+			if got := len(strings.Split(out, "\n")); got > rows {
+				t.Errorf("cols=%d rows=%d (%s): rendered %d lines, taller than the screen",
+					cols, rows, m.layout, got)
+			}
+			plain := stripANSI(out)
+			if !strings.Contains(plain, "1-4 move") && !strings.Contains(plain, "esc lobby") {
+				t.Errorf("cols=%d rows=%d (%s): status line missing", cols, rows, m.layout)
+			}
+			// The moves are essential and must survive the squeeze.
+			if !strings.Contains(plain, "switch") {
+				t.Errorf("cols=%d rows=%d (%s): move hints missing", cols, rows, m.layout)
+			}
+		}
+	}
+}
