@@ -130,7 +130,6 @@ func Run(opts Options) error {
 	if opts.OpenTeams {
 		model.SetStartScreenTeams()
 	}
-
 	client.Start()
 
 	// With a pixel backend, sprites are drawn out of band: Bubble Tea strips

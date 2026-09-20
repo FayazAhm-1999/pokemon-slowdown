@@ -1,45 +1,32 @@
 # pokemon slowdown
 
-**A calm, keyboard-first terminal client for Pokémon Showdown.**
+A terminal client (TUI) for [Pokémon Showdown](https://pokemonshowdown.com),
+written in Go. It plays ladder and challenge battles — Random Battle, singles
+and doubles — from the terminal, without a browser.
 
-> There's a time and place for everything
-
-Same battles. A calmer you. `slowdown` is a native terminal client built for
-people who keep a million tabs open and would rather not add another one. It
-lives in a split pane beside your editor, plays the full game, and gets out of
-the way.
-
-- **Keyboard-first.** Most singles turns are one keystroke. No mouse, ever.
-- **Genuinely responsive.** Cinematic, standard, sidecar and compact layouts,
-  each designed for its width rather than squeezed into it.
-- **Terminal-native.** Real sprites in the terminal, with a half-block
-  fallback that works literally everywhere.
-- **Protocol-correct.** Singles, doubles, team preview, forced switches, Tera,
-  Mega, Z-Moves and Dynamax, all driven by what the server actually sends.
-- **Safe by construction.** Server text is sanitized before it is rendered, and
-  the terminal is restored on every exit path.
+- Binary: `slowdown`
+- Platforms: macOS, Linux, Windows (amd64 and arm64)
+- Protocol: the documented Showdown websocket protocol
 
 ```
-┌ showdown · Gen 9 Random Battle ───────────────── Turn 11 ─┐
-│  opponent · coffee_enjoyer                                │
-│  Dragapult                                   71%  PAR     │
-│        ··············                                     │
-│        ··············                                     │
-│  you · sleepy_panda                                       │
-│  Kingambit                                   86%          │
-│        ··············                                     │
-├───────────────────────────────────────────────────────────┤
-│  1 Kowtow Cleave   DARK    16/16                          │
-│  2 Sucker Punch    DARK     7/8                           │
-│  3 Iron Head       STEEL   23/24                          │
-│  4 Swords Dance    STATUS  31/32                          │
-│  [t] Tera   [s] switch                                    │
-└───────────────────────────────────────────────────────────┘
+┌ showdown · [Gen 9] Random Battle ───────────────── Turn 11 ─┐
+│  opponent · coffee_enjoyer                                  │
+│  Dragapult                                     71%  PAR     │
+│                                                             │
+│  you · sleepy_panda                                         │
+│  Kingambit                                     86%          │
+├─────────────────────────────────────────────────────────────┤
+│  1 Kowtow Cleave   DARK     16/16                           │
+│  2 Sucker Punch    DARK      7/8                            │
+│  3 Iron Head       STEEL    23/24                           │
+│  4 Swords Dance    STATUS   31/32                           │
+│  [t] Tera   [s] switch                                      │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## Install
 
-### Homebrew (macOS and Linux)
+### Homebrew
 
 ```sh
 brew install unnipv/tap/pokemon-slowdown
@@ -51,170 +38,131 @@ brew install unnipv/tap/pokemon-slowdown
 go install github.com/unnipv/pokemon-slowdown/cmd/slowdown@latest
 ```
 
+Requires Go 1.27 or newer.
+
 ### Release binaries
 
 Download the archive for your platform from the
-[releases page](https://github.com/unnipv/pokemon-slowdown/releases) and put
-`slowdown` on your `PATH`. Checksums are published alongside each release.
+[releases page](https://github.com/unnipv/pokemon-slowdown/releases). Checksums
+are published as `checksums.txt` alongside each release.
 
-## First run
+## Usage
 
-```sh
-slowdown
 ```
-
-You start as a guest, which is enough to play Random Battles immediately. To
-log in to a registered account, set `username` in your config and either type
-your password when prompted or opt into the OS keyring:
-
-You can also set it in the config and let the keychain fill in the password:
-
-```toml
-# ~/.config/pokemon-slowdown/config.toml
-username = "coffee_enjoyer"
-remember = true   # password lives in your OS keychain, never on disk
-```
-
-## Signing in
-
-Guest play needs nothing. To use a name and be ranked, sign in:
-
-1. Press `:` and choose **Sign in to a registered account…**
-2. Enter your **username**, **password**, and whether to remember it.
-3. That's it — the client reconnects, exchanges your password for an assertion,
-   and adopts the name.
-
-The password is **never** written to the config file. If you choose *Remember*,
-it goes into your OS keychain (macOS Keychain, GNOME Keyring, Windows
-Credential Manager); the config only records your username and that you opted
-in. If no keychain is available, you are simply asked again next time.
-
-Sign out with `:` → **Sign out**, which clears the keychain entry too.
-
-A few things worth knowing about the real server behaviour:
-
-- A name that is **not yet registered** is claimed by signing in with any
-  password — you get the name immediately as an unregistered account.
-- A name that **is registered** requires its correct password. A wrong password
-  is reported clearly rather than silently ignored.
-- There is no supported way to pick a name without a password: the server
-  rejects a bare rename with *"Your authentication token was invalid"*, so the
-  sign-in form requires one.
-
-## Commands
-
-```sh
-slowdown                     # open the lobby
-slowdown rand                # queue a Gen 9 Random Battle immediately
-slowdown play gen9ou         # queue a specific format
-slowdown challenge <user>    # challenge someone
-slowdown spectate <battle>   # watch a battle id or replay URL
-slowdown teams               # team management
-slowdown doctor              # print terminal diagnostics
-slowdown doctor --sprites    # render a test sprite through every backend
+slowdown                     open the lobby
+slowdown rand                queue a Gen 9 Random Battle
+slowdown play <format>       queue a format, e.g. play gen9ou
+slowdown challenge <user>    challenge a user to your default format
+slowdown spectate <battle>   watch a battle id or replay URL
+slowdown teams               team management
+slowdown doctor              print terminal diagnostics
+slowdown doctor --sprites    render a test sprite through every backend
 slowdown --version
 ```
 
-Flags:
-
-| Flag | Meaning |
+| Flag | Description |
 | --- | --- |
-| `--debug` | write sanitized protocol events to a log file |
-| `--no-sprites` | disable sprites entirely |
+| `--debug` | write protocol events to a log file |
+| `--no-sprites` | disable sprites |
 | `--sprites <mode>` | `auto`, `kitty`, `iterm2`, `sixel`, `blocks`, `none` |
 | `--theme <name>` | `zen`, `dark`, `light`, `gameboy`, `mono`, `contrast` |
+
+## Signing in
+
+Guest play requires no setup. To use a name and appear on the ladder, press `:`
+and choose **Sign in to a registered account…**.
+
+| Field | Notes |
+| --- | --- |
+| Username | Your Pokémon Showdown name |
+| Password | Required |
+| Remember | Store the password in the OS keychain |
+
+The password is not written to the config file. When *Remember* is enabled it is
+stored in the platform keychain (macOS Keychain, GNOME Keyring, Windows
+Credential Manager); the config file records only the username and the choice.
+If no keychain is available, you are asked again on the next run.
+
+**Sign out** (`:` → Sign out) clears the keychain entry and the stored username.
+
+Server behaviour, verified against the live service:
+
+- An unregistered name is claimed by signing in with any password.
+- A registered name requires its correct password; a wrong password is reported.
+- A name cannot be set without a password. The server refuses a bare rename with
+  `Your authentication token was invalid`.
 
 ## Controls
 
 | Key | Action |
 | --- | --- |
 | `1`–`4` | choose a move |
-| `s` | switch (then `1`–`6`, or arrow keys and enter) |
-| `t` | use the current mechanic — Tera, Mega, Z-Move or Dynamax |
-| `i` | inspect a Pokémon — base, actual and in-battle stats (↑/↓ to cycle) |
+| `s` | switch (then `1`–`6`, or arrows and enter) |
+| `t` | use the current mechanic: Tera, Mega, Z-Move or Dynamax |
+| `i` | inspect a Pokémon; `↑`/`↓` cycles between both sides |
 | `l` | full battle log |
 | `c` | battle chat |
 | `tab` | switch between open battles |
+| `enter` | after a battle, queue the same format again |
 | `:` | command palette |
-| `?` | contextual help |
+| `?` | keyboard help |
 | `esc` | close an overlay, or return to the lobby |
-| `q` | quit — asks first during a live battle |
+| `q` | quit; asks for confirmation during a battle |
 | `ctrl+c` | quit immediately |
 
-In doubles, a move that needs a target opens a target picker with numeric
-shortcuts. Spread moves and self-targeting moves resolve without one.
+In doubles, moves that need a target open a target picker with numeric
+shortcuts. Spread and self-targeting moves resolve without one.
 
-`q` never forfeits by accident: a live battle always asks for confirmation
-first. Forfeiting is an explicit command in the palette. `tab` only switches
-between battles that are already open; after a battle ends, `enter` queues the
-same format again.
+Forfeiting is a command palette action, not a key, and always asks for
+confirmation.
 
 ## Layouts
 
-The layout is chosen from the terminal width, and each mode is designed rather
-than compressed:
+The layout is selected from the terminal width.
 
-| Width | Mode | Behaviour |
+| Width | Mode | Sprites |
 | --- | --- | --- |
-| ≥ 100 | cinematic | full battlefield, large sprites |
-| 70–99 | standard | normal experience, medium sprites |
-| 46–69 | sidecar | built for coding alongside; small sprites, moves always visible |
-| < 46 | compact | gameplay only, no sprites, always usable |
+| ≥ 100 | cinematic | yes |
+| 70–99 | standard | yes |
+| 46–69 | sidecar | no |
+| < 46 | compact | no |
 
-Below 32×12 the app shows a graceful "terminal too small" state instead of
-corrupting the screen.
+Below 32×12 the app displays a "terminal too small" message.
 
 ## Sprites
 
 Sprites are downloaded on demand from the public Pokémon Showdown sprite server
-and cached locally. Loading never blocks input: the sprite box is reserved
-immediately and a quiet placeholder is shown until the image arrives.
+and cached locally. Loading does not block input; the sprite box is reserved and
+a placeholder is shown until the image arrives.
 
-Backends, in order of fidelity:
-
-| Backend | Notes |
+| Backend | Terminals |
 | --- | --- |
-| **Kitty graphics** | **default on Ghostty, Kitty and WezTerm; true pixel sprites** |
-| iTerm2 inline images | iTerm2 (payload verified; falls back to blocks for now) |
+| Kitty graphics | Ghostty, Kitty, WezTerm |
+| iTerm2 inline images | iTerm2 |
 | Sixel | foot, mlterm, contour |
-| Half-block | universal fallback; pure text, works in every truecolour terminal |
+| Half-block | any truecolour terminal |
 
-### How the Kitty backend works
+`auto` selects Kitty graphics when the terminal supports it, and half-block
+otherwise. Inside tmux, `auto` uses half-block.
 
-Bubble Tea parses view content into a cell buffer and **discards graphics
-escapes**, so a Kitty escape placed in a View never reaches the terminal. This
-is not a bug in either project, but it does mean inline graphics are impossible.
+`showdown doctor --sprites` renders a test sprite through every backend so you
+can see which ones your terminal honours. Set `sprites.mode` to force one.
 
-Instead, `slowdown` reserves the sprite rectangle and puts a private-use
-*sentinel rune* in its top-left cell. The view is laid out and written normally,
-and a small writer wrapper swaps that rune for the graphics payload on the way
-out. Positioning is therefore handled by Bubble Tea itself, and no cursor
-arithmetic is involved. The payload uses `C=1` so the terminal never moves the
-cursor, and every image is deleted on exit.
-
-Sprites are drawn as a single static frame in this mode: re-sending them every
-tick flickers, and a clean static sprite beats an unstable animated one.
-
-Inside tmux, `auto` always uses half-blocks, because graphics passthrough is
-frequently unreliable there. Force a backend with `sprites.mode`, and preview
-each one with `slowdown doctor --sprites`.
-
-The half-block renderer is not a consolation prize. It preserves transparency
-against your terminal background, keeps the aspect ratio, and area-averages when
-downscaling so sprites stay recognisable rather than aliasing into noise.
+Animated GIF sprites are used in half-block mode (`sprites.animate`). In Kitty
+mode a static frame is drawn.
 
 ## Configuration
 
-`~/.config/pokemon-slowdown/config.toml` (or `$XDG_CONFIG_HOME`). Every key is
-optional.
+`~/.config/pokemon-slowdown/config.toml`, or `$XDG_CONFIG_HOME/pokemon-slowdown/`.
+Every key is optional. `NO_COLOR` is honoured.
 
 ```toml
-username = ""
-remember = false
+username = ""                     # Pokémon Showdown name
+remember = false                  # store the password in the OS keychain
 theme = "zen"                     # zen | dark | light | gameboy | mono | contrast
 default_format = "gen9randombattle"
 taglines = "canon"                # canon | absurd | off
-taglines_random = false           # rotate lines instead of using the first
+taglines_random = false
 notifications = "bell"            # off | bell | osc | desktop
 debug = false
 no_color = false
@@ -230,49 +178,54 @@ size = "medium"                   # small | medium | large
 # override any binding
 ```
 
-`NO_COLOR` is honoured.
+## Files
+
+| Path | Contents |
+| --- | --- |
+| `~/.config/pokemon-slowdown/config.toml` | configuration |
+| `~/.cache/pokemon-slowdown/sprites/` | downloaded sprites |
+| `~/.cache/pokemon-slowdown/dex/` | species and move data |
+| `~/.local/share/pokemon-slowdown/teams.json` | stored teams |
+| `~/.local/state/pokemon-slowdown/logs/` | debug logs (`--debug`) |
+
+On macOS and Windows these resolve under the platform's own config, cache and
+data directories.
 
 ## Notifications
 
 When a background battle becomes your turn, `slowdown` can ring the terminal
-bell, emit an OSC 9 / OSC 777 desktop notification, or shell out to a platform
-helper. It does not notify for the battle you are already looking at.
+bell, emit an OSC 9 or OSC 777 desktop notification, or use a platform helper.
+It does not notify for the battle you are already viewing. Configure with
+`notifications`.
 
 ## Teams
 
-`slowdown teams` lists your stored teams. Import a team by pasting Showdown
-export text into the palette's *Import team* command, and export by reading the
-stored team back out. The packed format used for the server is handled
-internally, so you never have to think about it.
+`slowdown teams` lists stored teams. Import by pasting Showdown export text into
+the palette's **Import team** command; export by reading the stored team back
+out. The packed format sent to the server is handled internally.
 
 ## Troubleshooting
 
-Start with `slowdown doctor`. It reports your terminal, `TERM`, multiplexer
-detection, truecolour support, the graphics protocols it detected, the selected
-sprite backend, and every config/cache/data path.
+Run `slowdown doctor` first. It reports the terminal, `TERM`, multiplexer
+detection, truecolour support, detected graphics protocols, the selected sprite
+backend, and every config, cache and data path.
 
-**Sprites look like coloured blocks.** That is the half-block renderer working
-as intended. Try `--sprites kitty` (Ghostty/Kitty/WezTerm) or `--sprites iterm2`
-and compare with `slowdown doctor --sprites`.
+| Symptom | Cause |
+| --- | --- |
+| Sprites are coloured blocks | Half-block renderer. Try `--sprites kitty` or `--sprites iterm2`, and compare with `slowdown doctor --sprites` |
+| No sprites in tmux | `auto` uses half-block under tmux, where graphics passthrough is unreliable |
+| Sprites look wrong after switching terminals | The terminal's graphics protocol differs; check `slowdown doctor` |
+| "Terminal too small" | Window is below 32×12 |
 
-**Sprites look wrong inside tmux.** That is expected; `auto` uses half-blocks
-under tmux on purpose.
+## Privacy and security
 
-**The screen is garbled after quitting.** Please open an issue with
-`slowdown doctor` output. Terminal restoration is a hard requirement, so this is
-a bug worth reporting.
-
-**"Terminal too small".** The window is below 32×12. Resize to continue.
-
-## Privacy
-
-- Passwords live in your OS keychain, never in the config file.
-- Debug logs contain sanitized protocol events only — no passwords, no
-  assertions, no cookies, no auth tokens.
-- Server text (chat, usernames, room titles) is stripped of terminal control
-  sequences before rendering, so another user cannot inject escape codes into
-  your terminal.
-- No telemetry. No analytics. No accounts beyond your Pokémon Showdown account.
+- Passwords are stored in the OS keychain, never in the config file.
+- Debug logs contain protocol events only. Passwords, assertions, cookies and
+  auth tokens are never logged.
+- Text from the server — chat, usernames, room titles — has terminal control
+  sequences stripped before rendering, so other users cannot inject escape
+  codes into your terminal.
+- No telemetry or analytics.
 
 ## Development
 
@@ -285,35 +238,27 @@ make run        # build and open the lobby
 make check      # gofmt, go vet, staticcheck, tests
 ```
 
-Requires **Go 1.27+**. `make test` needs no network; the opt-in suites that hit
-the real server and sprite server are `make live`.
+`make test` requires no network. `make live` runs the opt-in suites that contact
+the real server and sprite server.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout, how to add a
-protocol event, and the two protocol traps that have bitten this project.
-`docs/IMPLEMENTATION_NOTES.md` records the protocol discoveries and renderer
-compromises.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout and how to add a
+protocol event. `docs/IMPLEMENTATION_NOTES.md` records protocol findings and
+renderer behaviour.
 
 ## Releasing
 
-Releases are automated. To cut one:
-
 ```sh
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
+git tag -a v0.2.0 -m "v0.2.0"
+git push origin v0.2.0
 ```
 
-The `release` workflow runs GoReleaser, which builds `slowdown` for macOS,
-Linux and Windows (amd64 and arm64), publishes the archives plus
-`checksums.txt`, and updates the Homebrew formula in the tap. The version is
-injected with `-ldflags`, so `slowdown --version` reports the tag.
-
-To verify the release config without publishing:
-
-```sh
-make snapshot      # goreleaser build --snapshot --clean
-```
+GoReleaser builds macOS, Linux and Windows binaries, publishes the archives and
+checksums, and updates the Homebrew formula in the tap. Verify the configuration
+without publishing with `make snapshot`.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md) for asset and
-trademark attribution.
+MIT. See [LICENSE](LICENSE). Pokémon and Pokémon character names are trademarks
+of Nintendo, Creatures Inc. and GAME FREAK inc. Sprite artwork is downloaded at
+runtime and is not redistributed by this project; see
+[THIRD_PARTY.md](THIRD_PARTY.md).
