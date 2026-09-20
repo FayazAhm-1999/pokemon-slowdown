@@ -156,11 +156,21 @@ type Challenge struct {
 	Format string
 }
 
-// Format is one entry from the server's |formats| message.
+// Format is one entry from the server's |formats| message. The server sends a
+// display name plus a hex flag bitmask; the ID is derived from the name.
 type Format struct {
-	ID            string
-	Section       string
-	Random        bool
-	Searchable    bool
+	// ID is the format identifier, e.g. "gen9randombattle".
+	ID string
+	// Name is the human-readable name, e.g. "[Gen 9] Random Battle".
+	Name string
+	// Section is the catalogue section, e.g. "S/V Singles".
+	Section string
+	// Random marks formats played with preset teams, such as Random Battle.
+	Random bool
+	// Searchable marks formats that can be queued on the ladder.
+	Searchable bool
+	// Challengeable marks formats that can be played via challenge.
 	Challengeable bool
+	// Tournament marks formats usable in tournaments.
+	Tournament bool
 }

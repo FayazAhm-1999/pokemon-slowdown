@@ -66,6 +66,18 @@ func run(args []string) error {
 		cmd = args[0]
 		rest = args[1:]
 	}
+
+	// doctor has its own flag set: --sprites is a boolean probe there, but a
+	// string backend selector everywhere else.
+	if cmd == "doctor" {
+		dfs := flag.NewFlagSet("slowdown doctor", flag.ContinueOnError)
+		probe := dfs.Bool("sprites", false, "render a test sprite through every backend")
+		if err := dfs.Parse(rest); err != nil {
+			return err
+		}
+		return app.Doctor(os.Stdout, *probe)
+	}
+
 	if err := fs.Parse(rest); err != nil {
 		return err
 	}
@@ -105,8 +117,6 @@ func run(args []string) error {
 		opts.Spectate = fs.Arg(0)
 	case "teams":
 		opts.OpenTeams = true
-	case "doctor":
-		return app.Doctor(os.Stdout, *spritesMode == "probe" || hasFlag(args, "--sprites"))
 	case "version":
 		fmt.Println("pokemon slowdown", version)
 		return nil
@@ -115,15 +125,6 @@ func run(args []string) error {
 	}
 
 	return app.Run(opts)
-}
-
-func hasFlag(args []string, name string) bool {
-	for _, a := range args {
-		if a == name {
-			return true
-		}
-	}
-	return false
 }
 
 func themeNames() []string {

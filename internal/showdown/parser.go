@@ -449,62 +449,98 @@ func parseUsers(s string) []User {
 	return users
 }
 
-// parseFormats decodes the |formats| payload. Sections are introduced by a
-// ",N" column marker followed by the section name. Format entries carry an
-// optional flag string after the first comma: "#" random, "," search-only,
-// "" challenge-only.
+// parseFormats decodes the |formats| payload.
+//
+// The layout is a flat list of fields. A field that is empty or starts with a
+// comma followed by a number is a section marker: the NEXT field is the section
+// name. Any other field is a format entry, which is a display name optionally
+// followed by a comma and a hex flag bitmask.
+//
+// This mirrors the reference client's decoder exactly, including the flag bits:
+//
+//	1   preset team (Random Battle and friends)
+//	2   searchable on the ladder
+//	4   challengeable
+//	8   usable in tournaments
+//	16  teambuilder level 50
+//	32  partner format
+//	64  best-of default
+//	128 tera preview default
+//	256 item clause default
+//
+// The older documented ",#" / ",," / "," suffix form is still accepted for
+// backwards compatibility.
 func parseFormats(list string) []Format {
 	fields := strings.Split(list, "|")
 	var out []Format
 	section := ""
-	for i := 0; i < len(fields); i++ {
-		f := fields[i]
-		if f == "" {
-			continue
+	expectSection := false
+
+	for _, f := range fields {
+		switch {
+		case expectSection:
+			section = f
+			expectSection = false
+		case f == ",LL":
+			// Local ladder marker; carries no format.
+		case isSectionMarker(f):
+			expectSection = true
+		default:
+			out = append(out, parseFormatEntry(f, section))
 		}
-		if isColumnMarker(f) {
-			if i+1 < len(fields) {
-				section = fields[i+1]
-				i++
-			}
-			continue
-		}
-		out = append(out, parseFormatEntry(f, section))
 	}
 	return out
 }
 
-func isColumnMarker(s string) bool {
-	if len(s) < 2 || s[0] != ',' {
+// isSectionMarker reports whether a field introduces a section.
+func isSectionMarker(s string) bool {
+	if s == "" {
+		return true
+	}
+	if s[0] != ',' {
 		return false
 	}
-	for i := 1; i < len(s); i++ {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
+	rest := s[1:]
+	if rest == "" {
+		return true
 	}
-	return true
+	_, err := strconv.ParseFloat(rest, 64)
+	return err == nil
 }
 
 func parseFormatEntry(s, section string) Format {
 	f := Format{Section: section}
-	idx := strings.IndexByte(s, ',')
-	if idx < 0 {
-		f.ID = s
-		f.Searchable = true
-		f.Challengeable = true
-		return f
+	name := s
+
+	if idx := strings.LastIndexByte(s, ','); idx >= 0 {
+		if code, err := strconv.ParseInt(s[idx+1:], 16, 32); err == nil {
+			name = s[:idx]
+			f.Random = code&1 != 0
+			f.Searchable = code&2 != 0
+			f.Challengeable = code&4 != 0
+			f.Tournament = code&8 != 0
+			return finalizeFormat(f, name)
+		}
 	}
-	f.ID = s[:idx]
-	switch s[idx+1:] {
-	case "#":
-		f.Random = true
+
+	switch {
+	case strings.HasSuffix(name, ",#"):
+		f.Random, f.Searchable, f.Challengeable = true, true, true
+		name = strings.TrimSuffix(name, ",#")
+	case strings.HasSuffix(name, ",,"):
 		f.Searchable = true
+		name = strings.TrimSuffix(name, ",,")
+	case strings.HasSuffix(name, ","):
 		f.Challengeable = true
-	case ",":
-		f.Searchable = true
+		name = strings.TrimSuffix(name, ",")
 	default:
-		f.Challengeable = true
+		f.Searchable, f.Challengeable = true, true
 	}
+	return finalizeFormat(f, name)
+}
+
+func finalizeFormat(f Format, name string) Format {
+	f.Name = name
+	f.ID = ToID(name)
 	return f
 }

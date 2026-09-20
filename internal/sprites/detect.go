@@ -19,7 +19,12 @@ const (
 
 // Capabilities describes what a backend can do in this terminal.
 type Capabilities struct {
-	Protocol      Protocol
+	// Protocol is the backend actually in use.
+	Protocol Protocol
+	// Detected is the pixel protocol the terminal appears to support, which
+	// may differ from the active backend (for example when a user forces the
+	// block fallback on a Kitty-capable terminal).
+	Detected      Protocol
 	PixelAccurate bool
 	Animated      bool
 	// CellWidth and CellHeight are the terminal cell size in pixels, or 0 when
@@ -38,7 +43,6 @@ type Capabilities struct {
 // graphics passthrough is frequently unreliable there.
 func Detect() Capabilities {
 	caps := Capabilities{
-		Protocol:    ProtocolBlocks,
 		Term:        os.Getenv("TERM"),
 		TermProgram: os.Getenv("TERM_PROGRAM"),
 		Tmux:        os.Getenv("TMUX") != "",
@@ -54,12 +58,15 @@ func Detect() Capabilities {
 	case isSixel():
 		caps.Protocol = ProtocolSixel
 		caps.PixelAccurate = true
+	default:
+		caps.Protocol = ProtocolBlocks
 	}
 
 	if caps.Tmux {
 		caps.Protocol = ProtocolBlocks
 		caps.PixelAccurate = false
 	}
+	caps.Detected = caps.Protocol
 	return caps
 }
 

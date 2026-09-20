@@ -55,8 +55,12 @@ func NewRenderer(mode Mode, bg color.Color) (Renderer, error) {
 	detected := Detect()
 	switch mode {
 	case ModeNone:
+		detected.Protocol = ProtocolNone
+		detected.PixelAccurate = false
 		return &noneRenderer{caps: detected}, nil
 	case ModeBlocks:
+		detected.Protocol = ProtocolBlocks
+		detected.PixelAccurate = false
 		return &halfBlockRenderer{caps: detected, bg: bg}, nil
 	case ModeKitty:
 		return newKittyRenderer(detected), nil
@@ -67,6 +71,8 @@ func NewRenderer(mode Mode, bg color.Color) (Renderer, error) {
 	}
 	// Auto: half-block is the reliable default. Pixel backends are opt-in
 	// because terminal graphics inside a full-screen TUI can be fragile.
+	detected.Protocol = ProtocolBlocks
+	detected.PixelAccurate = false
 	return &halfBlockRenderer{caps: detected, bg: bg}, nil
 }
 
@@ -117,8 +123,12 @@ func fit(img image.Image, w, h int) *image.RGBA {
 	return dst
 }
 
-// opaque reports whether a colour is meaningfully visible.
+// opaque reports whether a colour is meaningfully visible. A nil colour means
+// "no colour set", which is not opaque.
 func opaque(c color.Color) bool {
+	if c == nil {
+		return false
+	}
 	_, _, _, a := c.RGBA()
 	return a >= 0x2000
 }

@@ -210,7 +210,7 @@ func Doctor(w io.Writer, showSprites bool) error {
 	fmt.Fprintf(w, "COLORTERM       %s\n", envOr(os.Getenv("COLORTERM"), "(unset)"))
 	fmt.Fprintf(w, "multiplexer     %s\n", tmuxLabel(caps.Tmux))
 	fmt.Fprintf(w, "truecolour      %s\n", truecolourLabel())
-	fmt.Fprintf(w, "graphics        detected %s\n", caps.Protocol)
+	fmt.Fprintf(w, "graphics        detected %s\n", caps.Detected)
 	fmt.Fprintf(w, "sprite backend  %s (configured %q)\n", selected.Capabilities().Protocol, cfg.Sprites.Mode)
 	if caps.CellWidth > 0 && caps.CellHeight > 0 {
 		fmt.Fprintf(w, "cell size       %dx%d px\n", caps.CellWidth, caps.CellHeight)

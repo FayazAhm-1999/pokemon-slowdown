@@ -169,6 +169,49 @@ func TestKittyRendererEmitsChunkedProtocol(t *testing.T) {
 	}
 }
 
+// TestKittyChunksLargePayloads exercises the multi-escape path with a noisy
+// image that will not compress below one chunk.
+func TestKittyChunksLargePayloads(t *testing.T) {
+	r := newKittyRenderer(Detect())
+	img := noise(240, 240)
+
+	out, err := r.Render(img, 20, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(out, "\x1b_G"); n < 2 {
+		t.Fatalf("expected a chunked payload, got %d escapes", n)
+	}
+	// Control data belongs to the first chunk only; the rest continue with m=.
+	if n := strings.Count(out, "f=100"); n != 1 {
+		t.Errorf("control data should appear exactly once, found %d", n)
+	}
+	if !strings.HasSuffix(strings.TrimRight(out, "\n"), "\x1b\\") {
+		t.Error("final chunk should be terminated with ST")
+	}
+	// Continuation chunks must not repeat the control data.
+	for _, chunk := range strings.Split(out, "\x1b_G")[1:] {
+		if strings.Contains(chunk, "a=T") && !strings.Contains(chunk, "f=100") {
+			t.Error("unexpected control data in a continuation chunk")
+		}
+	}
+}
+
+// noise builds a non-compressible RGBA image.
+func noise(w, h int) *image.RGBA {
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	seed := uint32(12345)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			seed = seed*1664525 + 1013904223
+			img.Set(x, y, color.RGBA{
+				uint8(seed >> 24), uint8(seed >> 16), uint8(seed >> 8), 255,
+			})
+		}
+	}
+	return img
+}
+
 func TestITerm2Renderer(t *testing.T) {
 	r := newITerm2Renderer(Detect())
 	out, err := r.Render(solid(20, 20, color.White), 4, 2)

@@ -134,6 +134,15 @@ func (m *Model) handleLobbyKey(key string) tea.Cmd {
 	return nil
 }
 
+// formatLabel returns a format's display name, preferring the name the server
+// sent over the curated fallback table.
+func formatLabel(f showdown.Format) string {
+	if f.Name != "" {
+		return f.Name
+	}
+	return FormatName(f.ID)
+}
+
 // filteredFormats applies the fuzzy filter to the server's format list.
 func (m *Model) filteredFormats() []showdown.Format {
 	if m.formatFilter == "" {
@@ -141,7 +150,7 @@ func (m *Model) filteredFormats() []showdown.Format {
 	}
 	names := make([]string, len(m.formats))
 	for i, f := range m.formats {
-		names[i] = FormatName(f.ID)
+		names[i] = formatLabel(f)
 	}
 	matches := fuzzy.Find(m.formatFilter, names)
 	out := make([]showdown.Format, 0, len(matches))
@@ -160,7 +169,7 @@ func (m *Model) queueFormat(f showdown.Format) tea.Cmd {
 	format := f.ID
 	team := m.teamForFormat(f)
 	m.pendingBattle = ""
-	m.setToast("Searching " + FormatName(f.ID) + "…")
+	m.setToast("Searching " + formatLabel(f) + "…")
 	return func() tea.Msg {
 		if team != "" {
 			_ = client.SendTeam(team)
@@ -239,7 +248,7 @@ func (m *Model) renderLobbyList(width, height int) string {
 	}
 	for i := m.formatScroll; i < end; i++ {
 		f := items[i]
-		name := FormatName(f.ID)
+		name := formatLabel(f)
 		line := fmt.Sprintf("  %-34s", truncate(name, 34))
 		tags := ""
 		if f.Random {

@@ -123,13 +123,53 @@ func TestParseUnknownIsPreserved(t *testing.T) {
 }
 
 func TestParseFormats(t *testing.T) {
-	payload := ",1|S/V Singles|gen9randombattle,#|gen9ou,,|gen9customgame,||,2|Past Gens|gen8randombattle,#"
+	// The documented legacy suffix form must still parse.
+	payload := ",1|S/V Singles|gen9randombattle,#|gen9ou,,|gen9customgame,|,2|Past Gens|gen8randombattle,#"
 	got := parseFormats(payload)
 	want := []Format{
-		{ID: "gen9randombattle", Section: "S/V Singles", Random: true, Searchable: true, Challengeable: true},
-		{ID: "gen9ou", Section: "S/V Singles", Searchable: true},
-		{ID: "gen9customgame", Section: "S/V Singles", Challengeable: true},
-		{ID: "gen8randombattle", Section: "Past Gens", Random: true, Searchable: true, Challengeable: true},
+		{ID: "gen9randombattle", Name: "gen9randombattle", Section: "S/V Singles", Random: true, Searchable: true, Challengeable: true},
+		{ID: "gen9ou", Name: "gen9ou", Section: "S/V Singles", Searchable: true},
+		{ID: "gen9customgame", Name: "gen9customgame", Section: "S/V Singles", Challengeable: true},
+		{ID: "gen8randombattle", Name: "gen8randombattle", Section: "Past Gens", Random: true, Searchable: true, Challengeable: true},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("formats mismatch\n got: %#v\nwant: %#v", got, want)
+	}
+}
+
+// TestParseFormatsRealPayload uses a verbatim capture from the live server,
+// where entries are display names followed by a hex flag bitmask.
+func TestParseFormatsRealPayload(t *testing.T) {
+	payload := ",1|S/V Singles" +
+		"|[Gen 9] Random Battle,4f" +
+		"|[Gen 9] Unrated Random Battle,b" +
+		"|[Gen 9] OU,e" +
+		"|[Gen 9] Custom Game,c" +
+		"|,1|S/V Doubles" +
+		"|[Gen 9] Random Doubles Battle,4f"
+	got := parseFormats(payload)
+
+	want := []Format{
+		{
+			ID: "gen9randombattle", Name: "[Gen 9] Random Battle", Section: "S/V Singles",
+			Random: true, Searchable: true, Challengeable: true, Tournament: true,
+		},
+		{
+			ID: "gen9unratedrandombattle", Name: "[Gen 9] Unrated Random Battle", Section: "S/V Singles",
+			Random: true, Searchable: true, Tournament: true,
+		},
+		{
+			ID: "gen9ou", Name: "[Gen 9] OU", Section: "S/V Singles",
+			Searchable: true, Challengeable: true, Tournament: true,
+		},
+		{
+			ID: "gen9customgame", Name: "[Gen 9] Custom Game", Section: "S/V Singles",
+			Challengeable: true, Tournament: true,
+		},
+		{
+			ID: "gen9randomdoublesbattle", Name: "[Gen 9] Random Doubles Battle", Section: "S/V Doubles",
+			Random: true, Searchable: true, Challengeable: true, Tournament: true,
+		},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("formats mismatch\n got: %#v\nwant: %#v", got, want)
