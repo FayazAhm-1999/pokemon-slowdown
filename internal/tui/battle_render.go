@@ -154,6 +154,71 @@ func (bv *battleView) timerText() string {
 // Field
 // ---------------------------------------------------------------------------
 
+// renderPartyDots shows each Pokémon on a side as a dot, so you can see at a
+// glance how many are left and how many you have actually seen:
+//
+//	●  seen and alive        ○  still hidden
+//	●  currently active      ●  fainted
+//
+// Colours carry the meaning, and the count is shown alongside so the
+// information does not depend on colour alone.
+func (bv *battleView) renderPartyDots(side *battle.Side, withCount bool) string {
+	if side == nil || len(side.Party) == 0 {
+		return ""
+	}
+	t := bv.theme
+	var dots strings.Builder
+	remaining := 0
+	for _, p := range side.Party {
+		switch {
+		case p.Fainted:
+			dots.WriteString(t.Danger.Render("●"))
+		case p.Active:
+			dots.WriteString(t.Primary.Render("●"))
+		case p.Revealed:
+			dots.WriteString(t.Success.Render("●"))
+		default:
+			dots.WriteString(t.Dim.Render("○"))
+		}
+		if !p.Fainted {
+			remaining++
+		}
+	}
+	out := dots.String()
+	if withCount {
+		out += "  " + t.Muted.Render(fmt.Sprintf("%d/%d", remaining, len(side.Party)))
+	}
+	return out
+}
+
+// renderPartyTracker is a single line showing both sides' party state.
+func (bv *battleView) renderPartyTracker(width int, layout LayoutMode) string {
+	s := bv.state()
+	foe, mine := s.Opponent(), s.MySide()
+	if (foe == nil || len(foe.Party) == 0) && (mine == nil || len(mine.Party) == 0) {
+		return ""
+	}
+	t := bv.theme
+	withCount := layout != LayoutCompact
+
+	part := func(label string, side *battle.Side) string {
+		dots := bv.renderPartyDots(side, withCount)
+		if dots == "" {
+			return ""
+		}
+		return t.Muted.Render(label) + " " + dots
+	}
+
+	line := "  " + part("foe", foe) + "   " + part("you", mine)
+	if lipgloss.Width(line) > width {
+		line = "  " + part("f", foe) + "  " + part("y", mine)
+	}
+	if lipgloss.Width(line) > width {
+		line = "  " + part("", foe) + "  " + part("", mine)
+	}
+	return line
+}
+
 func (bv *battleView) renderField(width int, layout LayoutMode) []string {
 	s := bv.state()
 	var out []string
@@ -163,16 +228,18 @@ func (bv *battleView) renderField(width int, layout LayoutMode) []string {
 		out = append(out, bv.renderMonBlock(s.Opponent(), true, width, layout)...)
 		out = append(out, "")
 		out = append(out, bv.renderMonBlock(s.MySide(), false, width, layout)...)
-		out = append(out, "")
-		return out
+	} else {
+		// Narrow layouts: one line per active Pokémon, opponent first.
+		for _, p := range activeOf(s.Opponent()) {
+			out = append(out, bv.renderMonLine(p, true, width, layout))
+		}
+		for _, p := range activeOf(s.MySide()) {
+			out = append(out, bv.renderMonLine(p, false, width, layout))
+		}
 	}
 
-	// Narrow layouts: one line per active Pokémon, opponent first.
-	for _, p := range activeOf(s.Opponent()) {
-		out = append(out, bv.renderMonLine(p, true, width, layout))
-	}
-	for _, p := range activeOf(s.MySide()) {
-		out = append(out, bv.renderMonLine(p, false, width, layout))
+	if tracker := bv.renderPartyTracker(width, layout); tracker != "" {
+		out = append(out, tracker)
 	}
 	out = append(out, "")
 	return out

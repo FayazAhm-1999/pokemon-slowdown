@@ -582,6 +582,12 @@ func (m *Model) renderHelp() string {
 		"  q          quit (asks first during a battle)",
 		"  ctrl+c     quit immediately",
 		"",
+		m.theme.Title.Render("party tracker"),
+		"  " + m.theme.Success.Render("●") + " seen and alive     " +
+			m.theme.Dim.Render("○") + " still hidden",
+		"  " + m.theme.Primary.Render("●") + " currently active   " +
+			m.theme.Danger.Render("●") + " fainted",
+		"",
 		m.theme.Muted.Render("Taglines: " + m.cfg.Tagline(config.SlotIdle, false)),
 	}
 	return strings.Join(lines, "\n")

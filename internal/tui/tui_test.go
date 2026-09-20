@@ -406,6 +406,44 @@ func TestNarrowMonLineKeepsTypes(t *testing.T) {
 	}
 }
 
+func TestPartyTrackerShowsEveryPokemon(t *testing.T) {
+	m := testModel(t, config.Default())
+	feedFixture(t, m, "gen9-singles.txt")
+	bv := m.activeBattle()
+	if bv == nil {
+		t.Fatal("no battle")
+	}
+	line := stripANSI(bv.renderPartyTracker(120, LayoutStandard))
+
+	// Two parties of six: six dots each, filled or hollow.
+	if got := strings.Count(line, "●") + strings.Count(line, "○"); got != 12 {
+		t.Errorf("expected 12 dots, got %d: %q", got, line)
+	}
+	// The opponent should show both hidden and seen Pokémon.
+	if !strings.Contains(line, "○") {
+		t.Errorf("expected hidden Pokémon to render hollow: %q", line)
+	}
+	if strings.Count(line, "/6") != 2 {
+		t.Errorf("expected a remaining count per side: %q", line)
+	}
+	// Colour must not be the only signal, so the counts are textual.
+	if !strings.Contains(line, "foe") || !strings.Contains(line, "you") {
+		t.Errorf("expected both sides labelled: %q", line)
+	}
+}
+
+func TestPartyTrackerFitsNarrowLayouts(t *testing.T) {
+	m := testModel(t, config.Default())
+	feedFixture(t, m, "gen9-singles.txt")
+	bv := m.activeBattle()
+	for _, width := range []int{36, 46, 60, 120} {
+		line := stripANSI(bv.renderPartyTracker(width, LayoutFor(width)))
+		if lipgloss.Width(line) > width {
+			t.Errorf("width %d: tracker is %d cols: %q", width, lipgloss.Width(line), line)
+		}
+	}
+}
+
 func TestBattleIDFromInput(t *testing.T) {
 	cases := map[string]string{
 		"battle-gen9randombattle-123":                             "battle-gen9randombattle-123",

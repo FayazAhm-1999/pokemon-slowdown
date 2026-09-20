@@ -609,9 +609,20 @@ func (r *Reducer) switchIn(ident, details, hp, status string, drag bool) {
 		r.log("switch", "%s was dragged out!", r.display(p))
 	case r.State.Turn == 0 || r.State.TeamPreview:
 		r.log("switch", "%s was sent out!", r.display(p))
+	case r.isMine(p):
+		r.log("switch", "Go! %s!", p.Name)
 	default:
-		r.log("switch", "Go! %s!", r.display(p))
+		name := "The opponent"
+		if side := r.State.Side(p.SideID); side != nil && side.Name != "" {
+			name = side.Name
+		}
+		r.log("switch", "%s sent out %s!", name, p.Name)
 	}
+}
+
+// isMine reports whether a Pokémon belongs to the player this client controls.
+func (r *Reducer) isMine(p *Pokemon) bool {
+	return p != nil && r.State.Me != "" && p.SideID == r.State.Me
 }
 
 func (r *Reducer) findForSwitch(side *Side, ident, species string) *Pokemon {
