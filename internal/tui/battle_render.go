@@ -577,6 +577,11 @@ func (bv *battleView) renderLogTail(n int) []string {
 
 	out := make([]string, 0, end-start)
 	for _, e := range log[start:end] {
+		// The result block states the outcome; repeating it in the tail reads
+		// as a duplicate.
+		if e.Kind == "win" || e.Kind == "tie" {
+			continue
+		}
 		out = append(out, "  "+bv.styleLogLine(e))
 	}
 	return out
@@ -790,6 +795,11 @@ func (bv *battleView) renderResult(width int) []string {
 // first cell; spriteLayer substitutes that rune for a graphics payload on the
 // way to the terminal.
 func (bv *battleView) spriteBlock(p *battle.Pokemon, layout LayoutMode) string {
+	// An overlay covers the field. Sprites are drawn out of band, so they must
+	// not be registered at all while one is open, or they show through it.
+	if bv.overlay != overlayNone {
+		return ""
+	}
 	cols, rows := bv.spriteCells()
 	if cols == 0 || p == nil || p.Species == "" || bv.deps.Renderer == nil {
 		return ""

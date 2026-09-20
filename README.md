@@ -8,21 +8,16 @@ and doubles — from the terminal, without a browser.
 - Platforms: macOS, Linux, Windows (amd64 and arm64)
 - Protocol: the documented Showdown websocket protocol
 
-```
-┌ showdown · [Gen 9] Random Battle ───────────────── Turn 11 ─┐
-│  opponent · coffee_enjoyer                                  │
-│  Dragapult                                     71%  PAR     │
-│                                                             │
-│  you · sleepy_panda                                         │
-│  Kingambit                                     86%          │
-├─────────────────────────────────────────────────────────────┤
-│  1 Kowtow Cleave   DARK     16/16                           │
-│  2 Sucker Punch    DARK      7/8                            │
-│  3 Iron Head       STEEL    23/24                           │
-│  4 Swords Dance    STATUS   31/32                           │
-│  [t] Tera   [s] switch                                      │
-└─────────────────────────────────────────────────────────────┘
-```
+## Screenshots
+
+From a real session, Ghostty, half-block sprite backend.
+
+![Battle screen](docs/screenshot-battle.png)
+
+![Lobby and format list](docs/screenshot-lobby.png)
+
+![Inspect overlay](docs/screenshot-inspect.png)
+
 
 ## Install
 

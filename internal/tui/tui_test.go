@@ -447,6 +447,24 @@ func TestPartyTrackerFitsNarrowLayouts(t *testing.T) {
 	}
 }
 
+func TestLobbyRowsKeepTagsInTheirOwnColumn(t *testing.T) {
+	m := testModel(t, config.Default())
+	m.formats = []showdown.Format{
+		{ID: "gen9ffarandombattle", Name: "[Gen 9] Free-For-All Random Battle", Random: true, Searchable: true},
+		{ID: "gen9championsdoublescustomgame", Name: "[Gen 9] Champions] Doubles Custom Game", Challengeable: true},
+		{ID: "gen9ou", Name: "[Gen 9] OU", Searchable: true, Challengeable: true},
+	}
+	for _, width := range []int{50, 60, 80, 120} {
+		out := stripANSI(m.renderLobbyList(width, 30))
+		for _, line := range strings.Split(out, "\n") {
+			if strings.Contains(line, "Battlerandom") || strings.Contains(line, "Gamerandom") ||
+				strings.Contains(line, "Gamechallenge") {
+				t.Errorf("width %d: tag ran into the format name: %q", width, line)
+			}
+		}
+	}
+}
+
 func TestBattleIDFromInput(t *testing.T) {
 	cases := map[string]string{
 		"battle-gen9randombattle-123":                             "battle-gen9randombattle-123",
@@ -495,4 +513,53 @@ func keyMsg(s string) tea.KeyPressMsg {
 		}
 	}
 	return k
+}
+
+func TestHTMLCommandOutputIsRenderedAsText(t *testing.T) {
+	// /data and friends reply with HTML; it must not reach the screen as markup.
+	const raw = `/raw <ul class="utilichart"><li class="result"><span class="col itemiconcol">` +
+		`<psicon item="choiceband"></psicon></span> <span class="col namecol">` +
+		`<a href="https://dex.pokemonshowdown.com/items/choiceband">Choice Band</a></span> ` +
+		`<span class="col itemdesccol">Holder's Attack is 1.5&times;, but it can only select the first move it executes.</span></li></ul>`
+
+	if !looksLikeHTML(raw) {
+		t.Fatal("HTML command output should be detected")
+	}
+	text := htmlToText(raw)
+	if strings.Contains(text, "<") || strings.Contains(text, ">") {
+		t.Errorf("tags survived: %q", text)
+	}
+	for _, want := range []string{"Choice Band", "Holder's Attack is 1.5×", "first move"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q in %q", want, text)
+		}
+	}
+	if strings.Contains(text, "psicon") || strings.Contains(text, "utilichart") {
+		t.Errorf("markup leaked into the text: %q", text)
+	}
+
+	// And it must survive into the rendered chat overlay.
+	m := testModel(t, config.Default())
+	bv := m.battleFor("battle-x")
+	bv.addChat("cosmopense", raw, true, 0)
+	bv.overlay = overlayChat
+	out := stripANSI(bv.render(m.width, m.height-2, m.layout))
+	if strings.Contains(out, "<span") || strings.Contains(out, "utilichart") {
+		t.Errorf("markup reached the screen:\n%s", out)
+	}
+	if !strings.Contains(out, "Choice Band") {
+		t.Error("the readable text did not reach the screen")
+	}
+}
+
+func TestPlainChatIsLeftAlone(t *testing.T) {
+	if looksLikeHTML("gl hf") {
+		t.Error("plain chat must not be treated as HTML")
+	}
+	if looksLikeHTML("a < b") {
+		t.Error("a stray angle bracket is not HTML")
+	}
+	if got := htmlToText("gl hf"); got != "gl hf" {
+		t.Errorf("plain text was rewritten: %q", got)
+	}
 }

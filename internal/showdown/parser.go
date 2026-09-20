@@ -162,7 +162,7 @@ func parseLine(room, line string) (Event, bool) {
 		return RoomTitle{Base: b, Title: payload}, true
 	case "users":
 		return RoomUsers{Base: b, Users: parseUsers(payload)}, true
-	case "html":
+	case "html", "raw":
 		return RoomHTML{Base: b, HTML: payload}, true
 	case "init":
 		return RoomInit{Base: b, Type: payload}, true

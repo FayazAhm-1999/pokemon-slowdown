@@ -282,23 +282,42 @@ func (m *Model) renderLobbyList(width, height int) string {
 	if len(items) == 0 {
 		b.WriteString(t.Muted.Render("  no formats matched\n"))
 	}
+
+	// Leave a fixed column for the tags, so a long name cannot run into them.
+	nameW := width - 18
+	if nameW < 12 {
+		nameW = 12
+	}
+	if nameW > 40 {
+		nameW = 40
+	}
+
 	for i := m.formatScroll; i < end; i++ {
 		f := items[i]
-		name := formatLabel(f)
-		line := fmt.Sprintf("  %-34s", truncate(name, 34))
-		tags := ""
+		name := truncate(formatLabel(f), nameW)
+
+		var tags []string
 		if f.Random {
-			tags += t.Accent.Render("random ")
+			tags = append(tags, t.Accent.Render("random"))
 		}
 		if !f.Searchable {
-			tags += t.Dim.Render("challenge ")
+			tags = append(tags, t.Dim.Render("challenge"))
 		}
-		line += tags
+		tagText := strings.Join(tags, " ")
+
 		if i == m.formatCursor {
-			b.WriteString(t.Selected.Width(width-2).Render("▸ "+truncate(name, width-6)+" ") + "\n")
+			row := padRight(name, nameW)
+			if tagText != "" {
+				row += "  " + tagText
+			}
+			b.WriteString(t.Selected.Width(width-2).Render("▸ "+row) + "\n")
 			continue
 		}
-		b.WriteString(line + "\n")
+		row := padRight(t.Fg.Render(name), nameW)
+		if tagText != "" {
+			row += "  " + tagText
+		}
+		b.WriteString("  " + row + "\n")
 	}
 	return b.String()
 }

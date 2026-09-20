@@ -151,6 +151,11 @@ func (bv *battleView) title() string {
 }
 
 func (bv *battleView) addChat(user, text string, me bool, at int64) {
+	// Commands like /data reply with HTML. Render it as text so the output is
+	// readable instead of a wall of markup.
+	if looksLikeHTML(text) {
+		text = htmlToText(text)
+	}
 	bv.chat = append(bv.chat, chatLine{
 		user: SanitizeLine(user),
 		text: SanitizeLine(text),

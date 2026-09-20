@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/unnipv/pokemon-slowdown/internal/battle"
 	"strconv"
 )
@@ -60,6 +61,11 @@ func overlayAt(base, box string, height int) string {
 func (bv *battleView) overlayFrame(title string, width int, body []string) string {
 	if width < 20 {
 		width = 20
+	}
+	// An overlay does not need the whole screen; a box much wider than its
+	// content is just a lot of empty space.
+	if width > 78 {
+		width = 78
 	}
 	inner := width - 6
 	t := bv.theme
@@ -378,7 +384,13 @@ func (bv *battleView) renderChatOverlay(width, height int) string {
 		if c.me {
 			name = t.Primary.Render(SanitizeLine(c.user))
 		}
-		body = append(body, name+": "+t.Fg.Render(c.text))
+		// Converted command output can span several lines.
+		parts := strings.Split(c.text, "\n")
+		body = append(body, name+": "+t.Fg.Render(parts[0]))
+		indent := strings.Repeat(" ", lipgloss.Width(name)+2)
+		for _, cont := range parts[1:] {
+			body = append(body, indent+t.Fg.Render(cont))
+		}
 	}
 	if len(body) == 0 {
 		body = append(body, t.Muted.Render("(no messages)"))

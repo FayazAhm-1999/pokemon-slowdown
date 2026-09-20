@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bytes"
+	"github.com/unnipv/pokemon-slowdown/internal/config"
 	"strings"
 	"testing"
 )
@@ -89,5 +90,26 @@ func TestSubstituteSentinelsLeavesOrdinaryTextAlone(t *testing.T) {
 	got := substituteSentinels(in, map[rune]string{0xE000: "X"})
 	if !bytes.Equal(got, in) {
 		t.Errorf("ordinary text was modified: %q -> %q", in, got)
+	}
+}
+
+func TestOverlayInvalidatesTheSpriteLayer(t *testing.T) {
+	m := testModel(t, config.Default())
+	bv := m.battleFor("battle-x")
+
+	open := bv.layerKey(LayoutStandard)
+	bv.overlay = overlayInspect
+	withOverlay := bv.layerKey(LayoutStandard)
+
+	if open == withOverlay {
+		t.Error("opening an overlay must invalidate the sprite layer, or sprites draw over it")
+	}
+	// Changing layout or returning to no overlay must invalidate again.
+	bv.overlay = overlayNone
+	if back := bv.layerKey(LayoutStandard); back != open {
+		t.Error("closing the overlay should restore the original key")
+	}
+	if other := bv.layerKey(LayoutCompact); other == open {
+		t.Error("changing layout must invalidate the sprite layer")
 	}
 }
