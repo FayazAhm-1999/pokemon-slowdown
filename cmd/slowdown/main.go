@@ -19,10 +19,27 @@ import (
 	"strings"
 
 	"github.com/unnipv/pokemon-slowdown/internal/app"
+	"runtime/debug"
 )
 
 // version is set at build time by GoReleaser via -ldflags.
 var version = "dev"
+
+// versionString reports the release version. Binaries built by GoReleaser carry
+// it in the version variable; binaries installed with `go install` do not get
+// ldflags, but the module version is recorded in the build info, so read that
+// instead of reporting "dev".
+func versionString() string {
+	if version != "dev" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		if v := bi.Main.Version; v != "" && v != "(devel)" {
+			return v
+		}
+	}
+	return version
+}
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -83,7 +100,7 @@ func run(args []string) error {
 	}
 
 	if *showVersion {
-		fmt.Println("pokemon slowdown", version)
+		fmt.Println("pokemon slowdown", versionString())
 		return nil
 	}
 
@@ -118,7 +135,7 @@ func run(args []string) error {
 	case "teams":
 		opts.OpenTeams = true
 	case "version":
-		fmt.Println("pokemon slowdown", version)
+		fmt.Println("pokemon slowdown", versionString())
 		return nil
 	default:
 		return fmt.Errorf("unknown command %q (try slowdown --help)", cmd)
