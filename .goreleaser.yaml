@@ -1,0 +1,78 @@
+# GoReleaser configuration for pokemon slowdown.
+#
+# Builds the `slowdown` binary for the supported platforms, publishes a GitHub
+# release with checksums, and generates a Homebrew formula.
+version: 2
+
+project_name: pokemon-slowdown
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: slowdown
+    main: ./cmd/slowdown
+    binary: slowdown
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      # Windows on arm64 is not a target for now.
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - README.md
+      - LICENSE
+      - THIRD_PARTY.md
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+brews:
+  - name: pokemon-slowdown
+    repository:
+      owner: unnipv
+      name: homebrew-tap
+    homepage: "https://github.com/unnipv/pokemon-slowdown"
+    description: "A calm, keyboard-first terminal client for Pokémon Showdown"
+    license: "MIT"
+    install: |
+      bin.install "slowdown"
+
+release:
+  draft: false
+  prerelease: auto

@@ -23,6 +23,8 @@ const (
 
 // Notifier delivers notifications.
 type Notifier struct {
+	// Mode is the configured delivery mode.
+	Mode Mode
 	// Bell rings the terminal bell.
 	Bell bool
 	// OSC emits an OSC 9 / OSC 777 desktop notification escape sequence, which
@@ -37,7 +39,7 @@ type Notifier struct {
 // New returns a notifier configured for the given mode. Unknown modes fall
 // back to the terminal bell.
 func New(mode Mode) *Notifier {
-	n := &Notifier{Out: os.Stderr}
+	n := &Notifier{Out: os.Stderr, Mode: mode}
 	switch mode {
 	case ModeOff:
 	case ModeBell:

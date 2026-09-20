@@ -18,7 +18,6 @@ type wsServer struct {
 	t      *testing.T
 	srv    *httptest.Server
 	mu     sync.Mutex
-	got    []string
 	onOpen func(conn *websocket.Conn)
 	conns  int
 	connCh chan *websocket.Conn
