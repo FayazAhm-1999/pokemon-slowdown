@@ -3,3 +3,8 @@
 *.test
 *.out
 .DS_Store
+
+# Local research material: prompts, mockups, screenshots. Kept on disk, never
+# published. (It also broke `go install`: Go rejects module archives containing
+# non-ASCII paths, and one of the filenames had an em-dash.)
+/research/
