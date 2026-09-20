@@ -33,6 +33,10 @@ type Deps struct {
 	Logf func(string, ...any)
 	// Now allows tests to control time.
 	Now func() time.Time
+	// StorePassword and DeletePassword persist credentials. They default to the
+	// OS keychain; tests replace them so they never touch the real one.
+	StorePassword  func(username, password string) error
+	DeletePassword func(username string) error
 }
 
 // screen identifies the active top-level screen.
@@ -138,6 +142,12 @@ func New(cfg config.Config, deps Deps) *Model {
 	if deps.Now == nil {
 		deps.Now = time.Now
 	}
+	if deps.StorePassword == nil {
+		deps.StorePassword = config.StorePassword
+	}
+	if deps.DeletePassword == nil {
+		deps.DeletePassword = config.DeletePassword
+	}
 	m := &Model{
 		cfg:            cfg,
 		deps:           deps,
@@ -238,7 +248,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.PasteMsg:
 		// Pasted content can be multi-line, which is how teams are imported.
 		if m.prompt.open {
-			m.prompt.input += Sanitize(msg.Content)
+			if f := m.prompt.current(); f != nil {
+				f.value += Sanitize(msg.Content)
+			}
 		}
 		return m, nil
 
@@ -542,10 +554,15 @@ func (m *Model) renderStatus() string {
 	}
 
 	name := m.username
-	if name == "" {
+	nameStyle := m.theme.Muted
+	switch {
+	case name == "":
 		name = "guest"
+	case m.loggedIn:
+		// A registered account, as opposed to a temporary guest name.
+		nameStyle = m.theme.Success
 	}
-	right := m.theme.Muted.Render(SanitizeLine(name)) + "  " + conn
+	right := nameStyle.Render(SanitizeLine(name)) + "  " + conn
 	if len(m.searching) > 0 {
 		right = m.theme.Accent.Render("searching "+strings.Join(m.searching, ",")) + "  " + right
 	}

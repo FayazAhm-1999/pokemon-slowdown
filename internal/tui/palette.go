@@ -20,12 +20,49 @@ type paletteState struct {
 	cursor int
 }
 
-// promptState is a single-line (or pasted multi-line) text prompt.
+// promptField is one input in a prompt. Secret fields are masked on screen and
+// are never logged, written to the config file, or echoed anywhere else.
+type promptField struct {
+	label  string
+	secret bool
+	value  string
+}
+
+// promptState is a small multi-field form.
 type promptState struct {
-	open  bool
-	label string
-	kind  string
-	input string
+	open   bool
+	title  string
+	kind   string
+	fields []promptField
+	index  int
+}
+
+// newPrompt builds an open prompt with the given fields.
+func newPrompt(kind, title string, fields ...promptField) promptState {
+	return promptState{open: true, kind: kind, title: title, fields: fields}
+}
+
+func (p *promptState) current() *promptField {
+	if p.index < 0 || p.index >= len(p.fields) {
+		return nil
+	}
+	return &p.fields[p.index]
+}
+
+// value returns a field's contents, or "" when out of range.
+func (p promptState) value(i int) string {
+	if i < 0 || i >= len(p.fields) {
+		return ""
+	}
+	return p.fields[i].value
+}
+
+// masked renders a value, hiding it entirely when the field is secret.
+func (f promptField) masked() string {
+	if !f.secret {
+		return f.value
+	}
+	return strings.Repeat("•", len([]rune(f.value)))
 }
 
 // paletteCommand is one palette entry.
@@ -71,10 +108,29 @@ func (m *Model) commands() []paletteCommand {
 		})
 	}
 
+	if m.loggedIn {
+		cmds = append(cmds, paletteCommand{
+			title: "Sign out of " + m.username,
+			run:   func(m *Model) tea.Cmd { return m.logout() },
+		})
+	} else {
+		cmds = append(cmds, paletteCommand{
+			title: "Sign in to a registered account…",
+			run: func(m *Model) tea.Cmd {
+				m.prompt = newPrompt("login", "Sign in to Pokémon Showdown",
+					promptField{label: "Username", value: m.cfg.Username},
+					promptField{label: "Password", secret: true},
+					promptField{label: "Remember", value: "n"},
+				)
+				return nil
+			},
+		})
+	}
+
 	cmds = append(cmds, paletteCommand{
 		title: "Challenge a user…",
 		run: func(m *Model) tea.Cmd {
-			m.prompt = promptState{open: true, label: "Username to challenge with " + def, kind: "challenge"}
+			m.prompt = newPrompt("challenge", "Challenge a user", promptField{label: "Username"})
 			return nil
 		},
 	})
@@ -134,14 +190,14 @@ func (m *Model) commands() []paletteCommand {
 		paletteCommand{
 			title: "Import team from clipboard text…",
 			run: func(m *Model) tea.Cmd {
-				m.prompt = promptState{open: true, label: "Paste team text, then enter", kind: "import"}
+				m.prompt = newPrompt("import", "Import a team", promptField{label: "Team text"})
 				return nil
 			},
 		},
 		paletteCommand{
 			title: "Spectate a battle…",
 			run: func(m *Model) tea.Cmd {
-				m.prompt = promptState{open: true, label: "Battle id or replay URL", kind: "spectate"}
+				m.prompt = newPrompt("spectate", "Spectate a battle", promptField{label: "Battle id"})
 				return nil
 			},
 		},
@@ -297,18 +353,27 @@ func (m *Model) handlePromptKey(key string) tea.Cmd {
 	switch key {
 	case "esc":
 		m.prompt = promptState{}
+		return nil
 	case "enter":
+		if m.prompt.index < len(m.prompt.fields)-1 {
+			m.prompt.index++
+			return nil
+		}
 		return m.submitPrompt()
 	case "backspace":
-		if len(m.prompt.input) > 0 {
-			r := []rune(m.prompt.input)
-			m.prompt.input = string(r[:len(r)-1])
+		if f := m.prompt.current(); f != nil && len(f.value) > 0 {
+			r := []rune(f.value)
+			f.value = string(r[:len(r)-1])
+		}
+	case "space":
+		if f := m.prompt.current(); f != nil {
+			f.value += " "
 		}
 	default:
-		if r := printable(key); r != 0 {
-			m.prompt.input += string(r)
-		} else if key == "space" {
-			m.prompt.input += " "
+		if f := m.prompt.current(); f != nil {
+			if r := printable(key); r != 0 {
+				f.value += string(r)
+			}
 		}
 	}
 	return nil
@@ -317,58 +382,159 @@ func (m *Model) handlePromptKey(key string) tea.Cmd {
 func (m *Model) submitPrompt() tea.Cmd {
 	p := m.prompt
 	m.prompt = promptState{}
-	input := strings.TrimSpace(p.input)
-	if input == "" {
-		return nil
-	}
 	switch p.kind {
+	case "login":
+		return m.submitLogin(p)
 	case "challenge":
-		if m.deps.Client == nil {
-			return nil
-		}
-		client := m.deps.Client
-		format := m.cfg.DefaultFormat
-		m.setToast("Challenging " + input + "…")
-		return func() tea.Msg { _ = client.Challenge(input, format); return nil }
+		return m.submitChallenge(strings.TrimSpace(p.value(0)))
 	case "import":
-		team, err := teams.ParseExport(input)
-		if err != nil {
-			m.setToast("Could not parse team: " + err.Error())
-			return nil
-		}
-		if m.deps.Teams == nil {
-			m.setToast("Team storage unavailable.")
-			return nil
-		}
-		team.Name = fmt.Sprintf("Imported %s", team.Pokemon[0].Display())
-		if err := m.deps.Teams.Add(team); err != nil {
-			m.setToast("Could not save team: " + err.Error())
-			return nil
-		}
-		m.setToast(fmt.Sprintf("Imported %d Pokémon.", len(team.Pokemon)))
-		m.screen = screenTeams
-		return nil
+		return m.submitImport(p.value(0))
 	case "spectate":
-		if m.deps.Client == nil {
-			return nil
-		}
-		id := battleIDFromInput(input)
-		if id == "" {
-			m.setToast("Could not read a battle id from that.")
-			return nil
-		}
-		client := m.deps.Client
-		m.setToast("Joining " + id + "…")
-		return func() tea.Msg { _ = client.JoinRoom(id); return nil }
+		return m.submitSpectate(strings.TrimSpace(p.value(0)))
 	}
+	return nil
+}
+
+// submitLogin stores the credentials and reconnects so the server issues a
+// fresh challenge and completes the handshake.
+func (m *Model) submitLogin(p promptState) tea.Cmd {
+	username := strings.TrimSpace(p.value(0))
+	password := p.value(1)
+	remember := strings.EqualFold(strings.TrimSpace(p.value(2)), "y")
+
+	if username == "" {
+		m.setToast("Enter a username.")
+		return nil
+	}
+	if password == "" {
+		// The server will not accept a name without an assertion, so there is
+		// nothing useful to do without a password.
+		m.setToast("Enter your password. (Guest names are assigned by the server.)")
+		return nil
+	}
+
+	// Persist the choice first, so it survives even if we are offline. The
+	// password itself is never written to the config file.
+	m.cfg.Username = username
+	m.cfg.Remember = remember && password != ""
+	if err := m.cfg.Save(""); err != nil {
+		m.setToast("Could not save settings: " + err.Error())
+	}
+
+	if m.cfg.Remember {
+		if err := m.deps.StorePassword(username, password); err != nil {
+			m.setToast("Could not store the password in your keychain; you will need to sign in again next time.")
+		}
+	} else {
+		_ = m.deps.DeletePassword(username)
+	}
+
+	if m.deps.Client == nil {
+		return nil
+	}
+
+	m.deps.Client.Login(showdown.Credentials{Username: username, Password: password})
+	if password == "" {
+		m.setToast("Signing in as guest " + username + "…")
+	} else {
+		m.setToast("Signing in as " + username + "…")
+	}
+	return nil
+}
+
+func (m *Model) submitChallenge(user string) tea.Cmd {
+	if user == "" || m.deps.Client == nil {
+		return nil
+	}
+	client := m.deps.Client
+	format := m.cfg.DefaultFormat
+	m.setToast("Challenging " + user + "…")
+	return func() tea.Msg { _ = client.Challenge(user, format); return nil }
+}
+
+func (m *Model) submitImport(text string) tea.Cmd {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	team, err := teams.ParseExport(text)
+	if err != nil {
+		m.setToast("Could not parse team: " + err.Error())
+		return nil
+	}
+	if m.deps.Teams == nil {
+		m.setToast("Team storage unavailable.")
+		return nil
+	}
+	team.Name = "Imported " + team.Pokemon[0].Display()
+	if err := m.deps.Teams.Add(team); err != nil {
+		m.setToast("Could not save team: " + err.Error())
+		return nil
+	}
+	m.setToast(fmt.Sprintf("Imported %d Pokémon.", len(team.Pokemon)))
+	m.screen = screenTeams
+	return nil
+}
+
+func (m *Model) submitSpectate(input string) tea.Cmd {
+	if input == "" || m.deps.Client == nil {
+		return nil
+	}
+	id := battleIDFromInput(input)
+	if id == "" {
+		m.setToast("Could not read a battle id from that.")
+		return nil
+	}
+	client := m.deps.Client
+	m.setToast("Joining " + id + "…")
+	return func() tea.Msg { _ = client.JoinRoom(id); return nil }
+}
+
+// logout clears stored credentials, including the keychain entry.
+func (m *Model) logout() tea.Cmd {
+	user := m.cfg.Username
+	m.cfg.Username = ""
+	m.cfg.Remember = false
+	if err := m.cfg.Save(""); err != nil {
+		m.setToast("Could not save settings: " + err.Error())
+	}
+	if user != "" {
+		_ = m.deps.DeletePassword(user)
+	}
+	if m.deps.Client != nil {
+		m.deps.Client.SetCredentials(showdown.Credentials{})
+		_ = m.deps.Client.Logout()
+		m.deps.Client.Reconnect()
+	}
+	m.username = ""
+	m.loggedIn = false
+	m.setToast("Signed out.")
 	return nil
 }
 
 func (m *Model) renderPrompt() string {
 	t := m.theme
-	body := t.Fg.Render(truncate(m.prompt.input, 400)) + t.Primary.Render("▌")
-	return t.BoxFocus.Padding(0, 2).Render(
-		t.Title.Render(m.prompt.label) + "\n\n" + body + "\n\n" + t.Dim.Render("enter confirm · esc cancel"))
+	var b strings.Builder
+	b.WriteString(t.Title.Render(m.prompt.title) + "\n\n")
+
+	for i, f := range m.prompt.fields {
+		label := padRight(f.label, 12)
+		if i == m.prompt.index {
+			b.WriteString("  " + t.Muted.Render(label) +
+				t.Fg.Render(truncate(f.masked(), 40)) + t.Primary.Render("▌") + "\n")
+			continue
+		}
+		// Completed fields stay visible but dimmed. Secret values stay masked
+		// even after they are entered.
+		b.WriteString("  " + t.Dim.Render(label+truncate(f.masked(), 40)) + "\n")
+	}
+
+	hint := "enter next · esc cancel"
+	if m.prompt.index == len(m.prompt.fields)-1 {
+		hint = "enter confirm · esc cancel"
+	}
+	b.WriteString("\n" + t.Dim.Render(hint))
+	return t.BoxFocus.Padding(0, 2).Render(b.String())
 }
 
 // battleIDFromInput extracts a battle room id from an id or a replay URL.

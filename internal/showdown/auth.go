@@ -49,15 +49,19 @@ func (c *Client) authenticate(challstr string) {
 }
 
 // Authenticate performs the documented login flow for the stored credentials
-// against the given challstr. An empty password performs a guest rename.
+// against the given challstr.
+//
+// A password is required: the server rejects a bare "/trn NAME" rename with
+// "Your authentication token was invalid", so there is no supported way to pick
+// an arbitrary name without going through /api/login. With no password we stay
+// a guest under the server-assigned name rather than sending a doomed command.
 func (c *Client) Authenticate(challstr string) error {
 	creds := c.Credentials()
 	if creds == nil || creds.Username == "" {
 		return nil
 	}
 	if creds.Password == "" {
-		// Guest rename: no assertion required.
-		return c.Send("/trn " + creds.Username)
+		return nil
 	}
 
 	assertion, err := FetchAssertion(challstr, creds.Username, creds.Password)
@@ -65,15 +69,19 @@ func (c *Client) Authenticate(challstr string) error {
 		return err
 	}
 	if assertion == "" {
-		return fmt.Errorf("showdown: login rejected for %q", creds.Username)
+		return fmt.Errorf("showdown: sign-in rejected for %q (check the password)", creds.Username)
 	}
 	return c.Send(fmt.Sprintf("/trn %s,0,%s", creds.Username, assertion))
 }
 
+// loginEndpoint is the login service. It is a variable so tests can point the
+// flow at a local server.
+var loginEndpoint = LoginURL
+
 // FetchAssertion exchanges a username, password and challstr for a login
 // assertion. It never logs the password or the assertion.
 func FetchAssertion(challstr, username, password string) (string, error) {
-	return fetchAssertion(context.Background(), LoginURL, challstr, username, password, nil)
+	return fetchAssertion(context.Background(), loginEndpoint, challstr, username, password, nil)
 }
 
 func fetchAssertion(ctx context.Context, endpoint, challstr, username, password string, hc *http.Client) (string, error) {

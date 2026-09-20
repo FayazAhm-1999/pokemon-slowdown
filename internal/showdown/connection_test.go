@@ -139,7 +139,11 @@ func TestClientParsesFramesOverTheWire(t *testing.T) {
 	}
 }
 
-func TestGuestLoginSendsTrn(t *testing.T) {
+// TestNoRenameWithoutPassword guards a real server behaviour: "/trn NAME" with
+// no token is refused with "Your authentication token was invalid", so sending
+// it would only produce a confusing error. With no password the client stays a
+// guest under the server-assigned name.
+func TestNoRenameWithoutPassword(t *testing.T) {
 	connCh := make(chan *websocket.Conn, 1)
 	srv := newWSServer(t, func(conn *websocket.Conn) {
 		_ = conn.Write(context.Background(), websocket.MessageText, []byte("|challstr|2|xyz"))
@@ -158,8 +162,96 @@ func TestGuestLoginSendsTrn(t *testing.T) {
 		t.Fatal("server never accepted a connection")
 	}
 
-	if got := readCommand(t, conn, 5*time.Second); got != "|/trn slowpoke" {
-		t.Fatalf("guest login command = %q, want |/trn slowpoke", got)
+	collect(t, c, func(ev Event) bool {
+		_, ok := ev.(ChallStr)
+		return ok
+	}, 5*time.Second)
+
+	if got := readCommand(t, conn, time.Second); got != "" {
+		t.Fatalf("expected no outbound command, got %q", got)
+	}
+}
+
+// TestLoginSendsTrnWithAssertion covers the real sign-in path: exchange the
+// password for an assertion, then rename with it.
+func TestLoginSendsTrnWithAssertion(t *testing.T) {
+	login := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if r.PostForm.Get("name") != "alice" || r.PostForm.Get("pass") != "hunter2" {
+			http.Error(w, "bad credentials", http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`]{"assertion":"ASSERT-123","curuser":{"loggedin":true,"userid":"alice"}}`))
+	}))
+	defer login.Close()
+
+	restore := loginEndpoint
+	loginEndpoint = login.URL
+	defer func() { loginEndpoint = restore }()
+
+	connCh := make(chan *websocket.Conn, 1)
+	srv := newWSServer(t, func(conn *websocket.Conn) {
+		_ = conn.Write(context.Background(), websocket.MessageText, []byte("|challstr|2|xyz"))
+		connCh <- conn
+	})
+
+	c := NewClient(srv.url())
+	c.SetCredentials(Credentials{Username: "alice", Password: "hunter2"})
+	c.Start()
+	defer c.Close()
+
+	var conn *websocket.Conn
+	select {
+	case conn = <-connCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("server never accepted a connection")
+	}
+
+	if got := readCommand(t, conn, 5*time.Second); got != "|/trn alice,0,ASSERT-123" {
+		t.Fatalf("login command = %q", got)
+	}
+}
+
+// TestLoginFailureIsReported ensures a rejected password surfaces as an error
+// rather than silence.
+func TestLoginFailureIsReported(t *testing.T) {
+	login := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`]{"actionsuccess":false,"curuser":{"loggedin":false}}`))
+	}))
+	defer login.Close()
+
+	restore := loginEndpoint
+	loginEndpoint = login.URL
+	defer func() { loginEndpoint = restore }()
+
+	srv := newWSServer(t, func(conn *websocket.Conn) {
+		_ = conn.Write(context.Background(), websocket.MessageText, []byte("|challstr|2|xyz"))
+	})
+
+	c := NewClient(srv.url())
+	c.SetCredentials(Credentials{Username: "alice", Password: "wrong"})
+	c.Start()
+	defer c.Close()
+
+	evs := collect(t, c, func(ev Event) bool {
+		_, ok := ev.(AuthFailed)
+		return ok
+	}, 5*time.Second)
+
+	var failed bool
+	for _, ev := range evs {
+		if e, ok := ev.(AuthFailed); ok {
+			failed = true
+			if !strings.Contains(e.Err.Error(), "rejected") {
+				t.Errorf("unhelpful error: %v", e.Err)
+			}
+		}
+		if _, ok := ev.(BattleUnknown); ok {
+			t.Error("no protocol event should be produced for a failed login")
+		}
+	}
+	if !failed {
+		t.Fatalf("expected AuthFailed, got %#v", evs)
 	}
 }
 

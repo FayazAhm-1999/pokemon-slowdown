@@ -156,7 +156,10 @@ func TestRenderAtEveryLayoutWidth(t *testing.T) {
 			m.openPalette()
 			_ = m.render()
 			m.palette.open = false
-			m.prompt = promptState{open: true, label: "test", input: "abc"}
+			m.prompt = newPrompt("test", "Test prompt",
+				promptField{label: "One", value: "abc"},
+				promptField{label: "Secret", secret: true, value: "hunter2"},
+			)
 			_ = m.render()
 			m.prompt = promptState{}
 			m.screen = screenTeams

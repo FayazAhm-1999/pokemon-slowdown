@@ -73,6 +73,9 @@ type Client struct {
 	done      chan struct{}
 	closeOnce sync.Once
 	wg        sync.WaitGroup
+
+	// wake forces an immediate reconnect instead of waiting out the backoff.
+	wake chan struct{}
 }
 
 // NewClient returns a client for the given websocket URL. Pass DefaultURL for
@@ -88,7 +91,32 @@ func NewClient(url string) *Client {
 		BackoffMin: time.Second,
 		BackoffMax: 30 * time.Second,
 		done:       make(chan struct{}),
+		wake:       make(chan struct{}, 1),
 	}
+}
+
+// Reconnect drops the current connection so the next one re-runs the login
+// handshake. Logging in needs a fresh |challstr|, which only arrives on a new
+// connection, so this is how a mid-session sign-in works.
+func (c *Client) Reconnect() {
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+
+	select {
+	case c.wake <- struct{}{}:
+	default:
+	}
+	if conn != nil {
+		_ = conn.CloseNow()
+	}
+}
+
+// Login stores credentials and reconnects so they take effect. An empty
+// password signs in as a guest under that name.
+func (c *Client) Login(creds Credentials) {
+	c.SetCredentials(creds)
+	c.Reconnect()
 }
 
 // Events returns the channel of typed server events. It is closed when the
@@ -160,6 +188,10 @@ func (c *Client) run() {
 		c.emit(Reconnecting{Attempt: attempt, Delay: delay})
 		select {
 		case <-time.After(delay):
+		case <-c.wake:
+			// An explicit reconnect request: retry now, and do not count it
+			// against the backoff.
+			attempt = 0
 		case <-c.done:
 			return
 		}

@@ -348,6 +348,14 @@ func (m *Model) renderLobbySide(width, height int) string {
 	if m.authErr != "" {
 		b.WriteString(t.Danger.Render(truncate(m.authErr, width-2)) + "\n")
 	}
+	if !m.loggedIn {
+		if m.cfg.Username != "" {
+			b.WriteString(t.Warning.Render("not signed in as "+truncate(m.cfg.Username, width-20)) + "\n")
+			b.WriteString(t.Dim.Render("  : sign in") + "\n")
+		} else {
+			b.WriteString(t.Dim.Render("guest · : sign in for ladder ranking") + "\n")
+		}
+	}
 
 	b.WriteString("\n" + t.Muted.Render("enter queue · ctrl+t teams · tab battle · : palette · ? help"))
 	return b.String()

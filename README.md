@@ -67,16 +67,39 @@ You start as a guest, which is enough to play Random Battles immediately. To
 log in to a registered account, set `username` in your config and either type
 your password when prompted or opt into the OS keyring:
 
+You can also set it in the config and let the keychain fill in the password:
+
 ```toml
 # ~/.config/pokemon-slowdown/config.toml
 username = "coffee_enjoyer"
-remember = true   # stores the password in your OS keychain, never on disk
+remember = true   # password lives in your OS keychain, never on disk
 ```
 
-Passwords are **never** written to the config file. With `remember = true` the
-password goes into the platform keychain (macOS Keychain, GNOME Keyring, Windows
-Credential Manager). If no keychain is available, `slowdown` simply asks again
-instead of storing anything.
+## Signing in
+
+Guest play needs nothing. To use a name and be ranked, sign in:
+
+1. Press `:` and choose **Sign in to a registered account…**
+2. Enter your **username**, **password**, and whether to remember it.
+3. That's it — the client reconnects, exchanges your password for an assertion,
+   and adopts the name.
+
+The password is **never** written to the config file. If you choose *Remember*,
+it goes into your OS keychain (macOS Keychain, GNOME Keyring, Windows
+Credential Manager); the config only records your username and that you opted
+in. If no keychain is available, you are simply asked again next time.
+
+Sign out with `:` → **Sign out**, which clears the keychain entry too.
+
+A few things worth knowing about the real server behaviour:
+
+- A name that is **not yet registered** is claimed by signing in with any
+  password — you get the name immediately as an unregistered account.
+- A name that **is registered** requires its correct password. A wrong password
+  is reported clearly rather than silently ignored.
+- There is no supported way to pick a name without a password: the server
+  rejects a bare rename with *"Your authentication token was invalid"*, so the
+  sign-in form requires one.
 
 ## Commands
 
