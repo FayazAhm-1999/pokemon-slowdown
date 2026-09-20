@@ -149,24 +149,34 @@ Backends, in order of fidelity:
 
 | Backend | Notes |
 | --- | --- |
-| Kitty graphics | Ghostty, Kitty, WezTerm |
-| iTerm2 inline images | iTerm2 |
-| Sixel | foot, mlterm, contour, WezTerm |
-| **Half-block** | **the default; works in every truecolour terminal** |
+| **Kitty graphics** | **default on Ghostty, Kitty and WezTerm; true pixel sprites** |
+| iTerm2 inline images | iTerm2 (payload verified; falls back to blocks for now) |
+| Sixel | foot, mlterm, contour |
+| Half-block | universal fallback; pure text, works in every truecolour terminal |
+
+### How the Kitty backend works
+
+Bubble Tea parses view content into a cell buffer and **discards graphics
+escapes**, so a Kitty escape placed in a View never reaches the terminal. This
+is not a bug in either project, but it does mean inline graphics are impossible.
+
+Instead, `slowdown` reserves the sprite rectangle and puts a private-use
+*sentinel rune* in its top-left cell. The view is laid out and written normally,
+and a small writer wrapper swaps that rune for the graphics payload on the way
+out. Positioning is therefore handled by Bubble Tea itself, and no cursor
+arithmetic is involved. The payload uses `C=1` so the terminal never moves the
+cursor, and every image is deleted on exit.
+
+Sprites are drawn as a single static frame in this mode: re-sending them every
+tick flickers, and a clean static sprite beats an unstable animated one.
+
+Inside tmux, `auto` always uses half-blocks, because graphics passthrough is
+frequently unreliable there. Force a backend with `sprites.mode`, and preview
+each one with `slowdown doctor --sprites`.
 
 The half-block renderer is not a consolation prize. It preserves transparency
-against your terminal background, keeps the aspect ratio, and is pure text, so
-it is immune to the graphics glitches that pixel protocols can suffer inside a
-full-screen TUI.
-
-`auto` deliberately selects **half-block**. Pixel backends are opt-in via
-`sprites.mode` because terminal graphics inside a continuously re-rendered TUI
-are fragile; `slowdown doctor --sprites` lets you preview each one before you
-commit. Inside tmux, `auto` always uses half-blocks, because graphics
-passthrough is frequently unreliable there.
-
-Animated GIF sprites are supported (`sprites.animate = true`). If a terminal
-cannot animate cleanly, a high-quality static frame is used instead.
+against your terminal background, keeps the aspect ratio, and area-averages when
+downscaling so sprites stay recognisable rather than aliasing into noise.
 
 ## Configuration
 

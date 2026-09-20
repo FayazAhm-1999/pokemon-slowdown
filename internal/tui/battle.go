@@ -63,6 +63,7 @@ type battleView struct {
 
 	spriteRendered map[string]string
 	spriteFrames   map[string]int
+	spritePayload  map[string]string
 	loading        map[string]bool
 
 	previewOrder []int
@@ -82,6 +83,7 @@ func newBattleView(room string, owner *Model) *battleView {
 		draft:          map[int]battle.ChoiceSlot{},
 		spriteRendered: map[string]string{},
 		spriteFrames:   map[string]int{},
+		spritePayload:  map[string]string{},
 		loading:        map[string]bool{},
 	}
 }
@@ -224,6 +226,11 @@ func (bv *battleView) renderSprite(key string, sprite *sprites.Sprite) {
 // advanceAnimation moves animated sprites to their next frame.
 func (bv *battleView) advanceAnimation(global int) {
 	if bv.deps.Sprites == nil || bv.deps.Renderer == nil {
+		return
+	}
+	// Out-of-band graphics are drawn as a static frame; re-sending them on
+	// every tick would flicker.
+	if sprites.SupportsPayload(bv.deps.Renderer) {
 		return
 	}
 	bv.animFrame++
@@ -525,7 +532,7 @@ func (bv *battleView) handleOverlayKey(key string, m *Model) tea.Cmd {
 	s := bv.state()
 	switch bv.overlay {
 	case overlaySwitch:
-		slots := bv.switchSlots()
+		slots := bv.switchOptions()
 		switch key {
 		case "esc", "s":
 			bv.overlay = overlayNone
@@ -618,25 +625,6 @@ func (bv *battleView) handleOverlayKey(key string, m *Model) tea.Cmd {
 		}
 	}
 	return nil
-}
-
-// switchSlots returns the party annotated for the switch overlay.
-func (bv *battleView) switchSlots() []battle.SwitchSlot {
-	s := bv.state()
-	side := s.MySide()
-	if side == nil {
-		return nil
-	}
-	out := make([]battle.SwitchSlot, 0, len(side.Party))
-	for i, p := range side.Party {
-		out = append(out, battle.SwitchSlot{
-			Index:   i + 1,
-			Fainted: p.Fainted,
-			Active:  p.Active,
-			Legal:   !p.Fainted && !p.Active,
-		})
-	}
-	return out
 }
 
 func digit(s string) int {

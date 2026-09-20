@@ -69,8 +69,13 @@ func NewRenderer(mode Mode, bg color.Color) (Renderer, error) {
 	case ModeSixel:
 		return newSixelRenderer(detected), nil
 	}
-	// Auto: half-block is the reliable default. Pixel backends are opt-in
-	// because terminal graphics inside a full-screen TUI can be fragile.
+	// Auto prefers a pixel backend, but only one we can actually drive: the
+	// Kitty protocol is drawn out of band around Bubble Tea's renderer, which
+	// otherwise strips graphics escapes. Everything else falls back to
+	// half-blocks, which are pure text and always work.
+	if detected.Detected == ProtocolKitty && !detected.Tmux {
+		return newKittyRenderer(detected), nil
+	}
 	detected.Protocol = ProtocolBlocks
 	detected.PixelAccurate = false
 	return &halfBlockRenderer{caps: detected, bg: bg}, nil

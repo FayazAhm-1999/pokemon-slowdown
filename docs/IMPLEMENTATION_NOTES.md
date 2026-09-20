@@ -160,24 +160,63 @@ Directories verified to exist: `gen5`, `gen5-shiny`, `gen5-back`,
 
 ## Rendering compromises
 
-### Half-block is the default, deliberately
+### Bubble Tea strips graphics escapes
 
-Bubble Tea's renderer diffs the screen. Graphics escape sequences embedded in a
-view string are at the mercy of that diffing: an unchanged line is not
-re-emitted, so an image can survive correctly, but any redraw of the region can
-leave artefacts, and there is no way to verify this across every terminal from
-inside the test suite.
+This is the single most important rendering fact in this project. Bubble Tea v2
+parses view content into a cell buffer, and unknown escape sequences are
+**discarded**. Measured directly:
 
-Given the explicit requirement that *"a terminal containing half of Charizard
-after exit is not acceptable"*, `auto` selects the half-block backend, which is
-pure text and therefore immune to the problem. Kitty, iTerm2 and sixel backends
-are implemented and reachable via `sprites.mode`, and
-`slowdown doctor --sprites` renders through each so a user can verify before
-committing. Inside tmux, `auto` always uses half-blocks.
+| View content | Bytes reaching the terminal |
+| --- | --- |
+| `ESC_G…ESC\` | *(nothing)* |
+| `ESC_G…ESC\` + `"X"` | `X` |
+| `"A"` + `ESC_G…ESC\` + `"B"` | `AB` |
+| `ESC_G…ESC\` + `"    "` | *(nothing)* |
 
-The half-block renderer composites transparency rather than painting it: a cell
-with one transparent half uses a single half-block glyph and never sets a
-background colour, so the terminal background shows through.
+So a Kitty/iTerm2/sixel escape embedded in a View can never work, and
+`go-termimg`'s Bubble Tea widget (which also returns a string) has the same
+problem. `doctor --sprites` looks fine only because it writes to the terminal
+directly.
+
+### The sentinel writer
+
+Pixel sprites are drawn out of band instead:
+
+1. The view reserves the sprite rectangle and places a private-use **sentinel
+   rune** in its top-left cell.
+2. Bubble Tea lays that rune out as an ordinary one-cell character and writes it.
+3. A writer wrapping the program output (`tea.WithOutput`) substitutes the rune
+   for the Kitty payload.
+
+Positioning comes free from Bubble Tea, so there is no cursor arithmetic. The
+sentinel is derived from a hash of the payload, so a cell is rewritten exactly
+when its sprite changes, and an unchanged sprite costs nothing. A generation
+counter bumps whenever the set of on-screen sprites changes, which forces every
+sentinel to change so the whole layer is redrawn after a clear. `C=1` keeps the
+terminal from moving the cursor, and images are deleted on exit.
+
+Two traps worth recording:
+
+- The writer must satisfy `term.File` (`io.ReadWriteCloser` + `Fd()`), not just
+  `io.Writer`. Bubble Tea only treats the output as a TTY - and only asks it for
+  a size - when that assertion succeeds. Without `Read`/`Close` the program
+  renders **nothing at all** and exits.
+- The loader and the renderer must request the *same* sprite ref. The loader
+  asked for the animated GIF while the renderer asked for the static PNG, so the
+  cache never hit and no payload was ever produced.
+
+### Half-block is the universal fallback
+
+Half-blocks are pure text and therefore immune to all of the above. Two real
+bugs were fixed here:
+
+- The background colour was not reset at the end of each row, so a cell that
+  set a background bled it across the rest of the line and painted wide bars
+  beside the sprite.
+- Downscaling used point sampling, which aliases a 96x96 sprite into mush in an
+  18x18 box. It now area-averages, and un-premultiplies colour so
+  semi-transparent edges keep their hue. Distinct rendered colours for a real
+  Gengar went from 11 to 139.
 
 ### Reserved rectangles
 

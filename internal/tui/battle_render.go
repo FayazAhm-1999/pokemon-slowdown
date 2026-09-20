@@ -8,6 +8,7 @@ import (
 
 	"github.com/unnipv/pokemon-slowdown/internal/battle"
 	"github.com/unnipv/pokemon-slowdown/internal/config"
+	"github.com/unnipv/pokemon-slowdown/internal/sprites"
 )
 
 // This file renders the battle screen. The design goal is playability: the
@@ -17,6 +18,11 @@ import (
 
 func (bv *battleView) render(width, height int, layout LayoutMode) string {
 	bv.curLayout = layout
+	if bv.owner != nil && bv.owner.sprites != nil {
+		// Declare which sprites are on screen before rendering so the layer can
+		// invalidate sentinels when that set changes.
+		bv.owner.sprites.begin(bv.layerKey(layout))
+	}
 	s := bv.state()
 	t := bv.theme
 
@@ -647,17 +653,81 @@ func (bv *battleView) renderResult(width int) []string {
 
 // spriteBlock returns the rendered sprite for a Pokémon, or a quiet placeholder
 // while it loads. Sprites never block gameplay: the box is always reserved.
+//
+// With a pixel backend the box is left blank apart from a sentinel rune in its
+// first cell; spriteLayer substitutes that rune for a graphics payload on the
+// way to the terminal.
 func (bv *battleView) spriteBlock(p *battle.Pokemon, layout LayoutMode) string {
 	cols, rows := layout.SpriteCells()
-	if cols == 0 || bv.deps.Renderer == nil || p == nil || p.Species == "" {
+	if cols == 0 || p == nil || p.Species == "" || bv.deps.Renderer == nil {
 		return ""
 	}
-	animate := bv.owner != nil && bv.owner.cfg.Sprites.Animate
-	ref := bv.spriteRef(p, bv.isMine(p), animate)
+	back := bv.isMine(p)
+	ref := bv.spriteRef(p, back, bv.animateSprites())
+
+	if payload, ok := bv.outOfBandPayload(p, ref, back, cols, rows); ok {
+		return sentinelBlock(bv.owner.sprites.register(payload), cols, rows)
+	}
+
 	if s, ok := bv.spriteRendered[ref.Key()]; ok && s != "" {
 		return s
 	}
 	return bv.placeholderBlock(cols, rows)
+}
+
+// outOfBandPayload encodes the graphics payload for a sprite, cached per
+// species so it is only encoded when the sprite actually changes.
+func (bv *battleView) outOfBandPayload(p *battle.Pokemon, ref sprites.Ref, back bool, cols, rows int) (string, bool) {
+	if bv.owner == nil || bv.owner.sprites == nil || bv.deps.Sprites == nil {
+		return "", false
+	}
+	if !sprites.SupportsPayload(bv.deps.Renderer) {
+		return "", false
+	}
+	sp, ok := bv.deps.Sprites.Cached(ref)
+	if !ok || sp.Static == nil {
+		return "", false
+	}
+	if cached, ok := bv.spritePayload[ref.Key()]; ok && cached != "" {
+		return cached, true
+	}
+	id := bv.owner.sprites.ID(bv.spriteSlot(p, back))
+	out, ok := sprites.PayloadFor(bv.deps.Renderer, sp.Static, cols, rows, id)
+	if !ok {
+		return "", false
+	}
+	// Delete this slot's previous image before drawing the new one, so a
+	// replacement never leaves the old sprite underneath.
+	payload := sprites.KittyDeleteImage(id) + out
+	bv.spritePayload[ref.Key()] = payload
+	return payload, true
+}
+
+// animateSprites reports whether sprites should animate. Out-of-band graphics
+// are drawn as a single static frame: re-sending them every frame flickers, and
+// a clean static sprite beats an unstable animated one.
+func (bv *battleView) animateSprites() bool {
+	if bv.owner == nil || !bv.owner.cfg.Sprites.Animate {
+		return false
+	}
+	if bv.deps.Renderer != nil && sprites.SupportsPayload(bv.deps.Renderer) {
+		return false
+	}
+	return true
+}
+
+// sentinelBlock reserves a cols x rows rectangle with a sentinel in the first
+// cell.
+func sentinelBlock(r rune, cols, rows int) string {
+	if cols <= 0 || rows <= 0 {
+		return ""
+	}
+	lines := make([]string, rows)
+	lines[0] = string(r) + strings.Repeat(" ", cols-1)
+	for i := 1; i < rows; i++ {
+		lines[i] = strings.Repeat(" ", cols)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (bv *battleView) placeholderBlock(cols, rows int) string {

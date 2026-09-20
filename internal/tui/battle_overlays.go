@@ -70,33 +70,77 @@ func (bv *battleView) overlayFrame(title string, width int, body []string) strin
 	return t.BoxFocus.Width(inner).Padding(0, 2).Render(content)
 }
 
+// switchOption is one party member in the switch overlay, built from battle
+// state rather than from the request so it always carries a name, types, HP
+// and status.
+type switchOption struct {
+	Index   int
+	Pokemon *battle.Pokemon
+	Legal   bool
+}
+
+func (bv *battleView) switchOptions() []switchOption {
+	side := bv.state().MySide()
+	if side == nil {
+		return nil
+	}
+	out := make([]switchOption, 0, len(side.Party))
+	for i, p := range side.Party {
+		out = append(out, switchOption{
+			Index:   i + 1,
+			Pokemon: p,
+			Legal:   !p.Fainted && !p.Active,
+		})
+	}
+	return out
+}
+
 func (bv *battleView) renderSwitchOverlay(width int) string {
 	t := bv.theme
-	slots := bv.switchSlots()
-	if len(slots) == 0 {
+	opts := bv.switchOptions()
+	if len(opts) == 0 {
 		return bv.overlayFrame("Switch", width, []string{t.Muted.Render("No party information yet.")})
 	}
+
+	nameW := 16
+	if width < 60 {
+		nameW = 12
+	}
+
 	var body []string
-	for i, sl := range slots {
+	for i, o := range opts {
+		p := o.Pokemon
 		cursor := "  "
 		if i == bv.overlayCursor {
 			cursor = t.Accent.Render("> ")
 		}
-		name := sl.Pokemon.Ident
-		if _, _, n := parseIdentLoose(sl.Pokemon.Ident); n != "" {
-			name = n
+
+		name := SanitizeLine(p.Name)
+		if g := genderGlyph(p.Gender); g != "" {
+			name += " " + g
 		}
-		state := ""
-		if sl.Fainted {
-			state = t.Dim.Render("fainted")
-		} else if sl.Active {
-			state = t.Muted.Render("already out")
-		} else {
-			state = t.Muted.Render(sl.Pokemon.Condition)
+		padded := padRight(name, nameW)
+
+		if !o.Legal {
+			reason := "unavailable"
+			switch {
+			case p.Fainted:
+				reason = "fainted"
+			case p.Active:
+				reason = "in battle"
+			}
+			body = append(body, t.Disabled.Render(
+				fmt.Sprintf("  [%d] %s %s", o.Index, padded, reason)))
+			continue
 		}
-		line := fmt.Sprintf("%s[%d] %s  %s", cursor, sl.Index, t.Fg.Render(name), state)
-		if !sl.Legal {
-			line = t.Disabled.Render(fmt.Sprintf("  [%d] %s  %s", sl.Index, name, "unavailable"))
+
+		line := fmt.Sprintf("%s[%d] %s", cursor, o.Index, t.Fg.Bold(true).Render(padded))
+		if types := bv.typeList(p.Species, LayoutStandard); types != "" {
+			line += " " + types
+		}
+		line += " " + bv.hpBar(p.HPPercent, 8) + " " + bv.hpText(p, false)
+		if st := bv.statusBadge(p.Status); st != "" {
+			line += " " + st
 		}
 		body = append(body, line)
 	}
@@ -305,21 +349,4 @@ func orDash(s string) string {
 		return "-"
 	}
 	return s
-}
-
-// parseIdentLoose splits a protocol ident such as "p1a: Gengar".
-func parseIdentLoose(ident string) (side, slot, name string) {
-	i := strings.Index(ident, ": ")
-	if i < 0 {
-		return "", "", ident
-	}
-	left := ident[:i]
-	name = ident[i+2:]
-	if len(left) >= 2 {
-		side = left[:2]
-		if len(left) > 2 {
-			slot = left[2:]
-		}
-	}
-	return side, slot, name
 }

@@ -5,6 +5,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -109,6 +110,9 @@ type Model struct {
 	pendingBattle string
 	animFrame     int
 
+	// sprites draws pixel graphics out of band, around Bubble Tea's renderer.
+	sprites *spriteLayer
+
 	// one-shot startup actions
 	autoQueue        string
 	autoDone         bool
@@ -142,10 +146,21 @@ func New(cfg config.Config, deps Deps) *Model {
 		games:          map[string]string{},
 		challengesFrom: map[string]string{},
 		battles:        map[string]*battleView{},
+		sprites:        newSpriteLayer(),
 		now:            deps.Now(),
 		layout:         LayoutFor(80),
 	}
 	return m
+}
+
+// SpriteWriter wraps the terminal writer so out-of-band sprite graphics are
+// injected into each rendered frame. Only needed when the renderer supports
+// payloads; the block renderer draws inline.
+func (m *Model) SpriteWriter(out io.Writer) io.Writer {
+	if m.sprites == nil {
+		return out
+	}
+	return m.sprites.wrap(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -676,7 +691,8 @@ func (m *Model) loadSprites(bv *battleView) []tea.Cmd {
 		return nil
 	}
 	var cmds []tea.Cmd
-	for _, ref := range bv.wantedSprites(m.cfg.Sprites.Animate) {
+	animate := bv.animateSprites()
+	for _, ref := range bv.wantedSprites(animate) {
 		if _, ok := m.deps.Sprites.Cached(ref.Sprite); ok {
 			continue
 		}

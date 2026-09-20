@@ -323,13 +323,43 @@ func referencePixels(img image.Image, cols, rows int) [][][2]color.Color {
 	return grid
 }
 
+// sameColor compares two colours as they are actually rendered: the renderer
+// un-premultiplies before emitting, so the reference must too.
 func sameColor(a, b color.Color) bool {
 	if a == nil || b == nil {
 		return opaque(a) == opaque(b)
 	}
-	ar, ag, ab, _ := a.RGBA()
-	br, bg, bb, _ := b.RGBA()
+	ar, ag, ab, aa := straight(a)
+	br, bg, bb, ba := straight(b)
+	if (aa == 0) != (ba == 0) {
+		return false
+	}
 	return ar == br && ag == bg && ab == bb
+}
+
+// straight returns colour components as they are actually emitted: the
+// renderer un-premultiplies and quantises to 8 bits per channel, so the
+// reference must be quantised the same way to compare equal.
+func straight(c color.Color) (r, g, b, a uint32) {
+	r, g, b, a = c.RGBA()
+	if a == 0 {
+		return 0, 0, 0, 0
+	}
+	if a != 0xffff {
+		r = r * 0xffff / a
+		g = g * 0xffff / a
+		b = b * 0xffff / a
+	}
+	return quant8(r), quant8(g), quant8(b), 0xffff
+}
+
+// quant8 reduces a 16-bit channel to the 8-bit value the terminal receives,
+// then widens it back so comparisons are like for like.
+func quant8(v uint32) uint32 {
+	if v > 0xffff {
+		v = 0xffff
+	}
+	return (v >> 8) * 0x101
 }
 
 func distinctColors(grid [][][2]color.Color) int {

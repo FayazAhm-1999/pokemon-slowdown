@@ -62,11 +62,14 @@ func Detect() Capabilities {
 		caps.Protocol = ProtocolBlocks
 	}
 
+	// Detected records what the terminal supports, before the tmux downgrade,
+	// so diagnostics stay truthful.
+	caps.Detected = caps.Protocol
+
 	if caps.Tmux {
 		caps.Protocol = ProtocolBlocks
 		caps.PixelAccurate = false
 	}
-	caps.Detected = caps.Protocol
 	return caps
 }
 

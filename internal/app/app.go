@@ -133,7 +133,14 @@ func Run(opts Options) error {
 
 	client.Start()
 
-	program := tea.NewProgram(model)
+	// With a pixel backend, sprites are drawn out of band: Bubble Tea strips
+	// graphics escapes from view content, so the layer rewrites sentinel runes
+	// in the output stream instead.
+	var progOpts []tea.ProgramOption
+	if sprites.SupportsPayload(renderer) {
+		progOpts = append(progOpts, tea.WithOutput(model.SpriteWriter(os.Stdout)))
+	}
+	program := tea.NewProgram(model, progOpts...)
 
 	// Restore the terminal on every exit path, including panics.
 	cleanup := func() {
