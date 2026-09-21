@@ -1,0 +1,57 @@
+name: Bug report
+description: A battle, sprite or connection problem — please include `slowdown doctor` output
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you saw instead. A screenshot of the terminal helps.
+    validations:
+      required: true
+  - type: input
+    id: os-terminal
+    attributes:
+      label: OS and terminal
+      description: e.g. macOS 15.6, Ghostty 1.2, or Ubuntu 24.04, foot 1.18. Say so if you are inside tmux or screen.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `slowdown --version`.
+      placeholder: v0.3.0
+    validations:
+      required: true
+  - type: input
+    id: format
+    attributes:
+      label: Format
+      description: What you were playing, e.g. gen9randombattle or gen9doublesou. Leave blank if the bug is not battle-related.
+    validations:
+      required: false
+  - type: input
+    id: battle-id
+    attributes:
+      label: Battle ID
+      description: e.g. battle-gen9randombattle-123456789. Leave blank if not battle-related.
+    validations:
+      required: false
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`slowdown doctor` output"
+      description: Run `slowdown doctor` and paste the whole output. It reports the terminal, graphics backends and paths, and is usually enough to reproduce.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt
+      description: |
+        Optional. If you ran with `--debug`, the log is under
+        `~/.local/state/pokemon-slowdown/logs/`. Paste only the relevant lines,
+        and please remove usernames and chat from other people first.
+    validations:
+      required: false
