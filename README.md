@@ -223,6 +223,9 @@ backend, and every config, cache and data path.
 | Sprites look wrong after switching terminals | The terminal's graphics protocol differs; check `slowdown doctor` |
 | "Terminal too small" | Window is below 32×12 |
 
+If it still misbehaves, please [open an issue](https://github.com/unnipv/pokemon-slowdown/issues)
+and include `slowdown doctor` output, the version, and what you were playing.
+
 ## Privacy and security
 
 - Passwords are stored in the OS keychain, never in the config file.
@@ -253,7 +256,9 @@ renderer behaviour.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE). Pokémon and Pokémon character names are trademarks
+MIT. See [LICENSE](LICENSE). This is an independent client, not affiliated with
+or endorsed by The Pokémon Company, Nintendo, Game Freak, Creatures Inc.,
+Smogon, or Pokémon Showdown. Pokémon and Pokémon character names are trademarks
 of Nintendo, Creatures Inc. and GAME FREAK inc. Sprite artwork is downloaded at
 runtime and is not redistributed by this project; see
 [THIRD_PARTY.md](THIRD_PARTY.md).

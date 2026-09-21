@@ -19,14 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-This project is an independent client for Pokémon Showdown. It is not
-affiliated with or endorsed by The Pokémon Company, Nintendo, Game Freak,
-Creatures Inc., Smogon, or Pokémon Showdown.
-
-Pokémon and Pokémon character names are trademarks of Nintendo, Creatures
-Inc. and GAME FREAK inc. Sprite artwork is downloaded at runtime from the
-public Pokémon Showdown sprite server and is not redistributed by this
-project. See THIRD_PARTY.md for details.
